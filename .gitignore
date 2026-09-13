@@ -1,1 +1,16 @@
 .DS_Store
+build/
+.release-archive/
+*.original
+*.phase*.original
+*.phase*-original
+*.pro.user
+.qmake.stash
+Makefile
+Makefile.*
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+*.o
+*.a
+*.app

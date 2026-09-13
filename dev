@@ -1,0 +1,229 @@
+#!/bin/zsh
+set -eu
+set -o pipefail
+
+ROOT_DIR=${0:A:h}
+COMMAND=${1:-}
+DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-14.0}
+PINNED_RELEASE_QT_VERSION=6.11.2
+DEFAULT_RELEASE_QT_ROOT="$HOME/Developer/Qt/$PINNED_RELEASE_QT_VERSION/macos"
+RELEASE_QT_ROOT=${ICONFIG_RELEASE_QT_ROOT:-$DEFAULT_RELEASE_QT_ROOT}
+RELEASE_BUILD_ROOT=${ICONFIG_RELEASE_BUILD_ROOT:-$ROOT_DIR/build/qt6-release-arm64}
+VERSION_HEADER="$ROOT_DIR/iConfig/Version.h"
+PROJECT_VERSION=$(/usr/bin/awk '/^#define ICONFIG_VERSION / { gsub(/"/, "", $3); print $3 }' "$VERSION_HEADER")
+BUNDLE_SHORT_VERSION=${PROJECT_VERSION%%-*}
+BUNDLE_BUILD_NUMBER=${ICONFIG_BUILD_NUMBER:-1}
+
+[[ -n "$PROJECT_VERSION" && -n "$BUNDLE_SHORT_VERSION" ]] || {
+  print -u2 "Could not read the release version from $VERSION_HEADER"
+  exit 1
+}
+
+find_qt_root() {
+  if [[ -n ${QT_ROOT:-} ]]; then
+    print -r -- "$QT_ROOT"
+  elif command -v brew >/dev/null 2>&1; then
+    brew --prefix qt
+  else
+    return 1
+  fi
+}
+
+find_boost_root() {
+  if [[ -n ${BOOST_ROOT:-} ]]; then
+    print -r -- "$BOOST_ROOT"
+  elif command -v brew >/dev/null 2>&1; then
+    brew --prefix boost
+  else
+    return 1
+  fi
+}
+
+if [[ "$COMMAND" == package || "$COMMAND" == release-check ]]; then
+  QT_ROOT_RESOLVED="$RELEASE_QT_ROOT"
+  BUILD_ROOT="$RELEASE_BUILD_ROOT"
+  RELEASE_MODE=1
+else
+  QT_ROOT_RESOLVED=$(find_qt_root) || {
+    print -u2 "Qt 6 not found. Set QT_ROOT to the Qt installation prefix."
+    exit 1
+  }
+  BUILD_ROOT=${ICONFIG_BUILD_ROOT:-$ROOT_DIR/build/qt6-release}
+  RELEASE_MODE=0
+fi
+BOOST_ROOT_RESOLVED=$(find_boost_root) || {
+  print -u2 "Boost not found. Set BOOST_ROOT to its installation prefix."
+  exit 1
+}
+QMAKE="$QT_ROOT_RESOLVED/bin/qmake"
+MACDEPLOYQT="$QT_ROOT_RESOLVED/bin/macdeployqt"
+
+require_qt6() {
+  [[ -x "$QMAKE" ]] || { print -u2 "qmake not executable: $QMAKE"; exit 1; }
+  "$QMAKE" -v | grep -q 'Using Qt version 6\.' || {
+    print -u2 "Refusing non-Qt-6 qmake: $QMAKE"
+    "$QMAKE" -v >&2
+    exit 1
+  }
+}
+
+require_release_qt() {
+  require_qt6
+  local version
+  version=$("$QMAKE" -query QT_VERSION)
+  [[ "$version" == "$PINNED_RELEASE_QT_VERSION" ]] || {
+    print -u2 "Release packaging requires Qt $PINNED_RELEASE_QT_VERSION; found $version"
+    exit 1
+  }
+  case "$QT_ROOT_RESOLVED" in
+    /opt/homebrew*|/opt/local*|/usr/local/Cellar*|/usr/local/opt*)
+      print -u2 "Release packaging refuses package-manager Qt: $QT_ROOT_RESOLVED"
+      print -u2 "Set ICONFIG_RELEASE_QT_ROOT to the pinned official Qt prefix."
+      exit 1
+      ;;
+  esac
+}
+
+thin_bundle_arm64() {
+  local app_path=$1 binary architectures mode temporary
+  while IFS= read -r -d '' binary; do
+    /usr/bin/file "$binary" | /usr/bin/grep -q 'Mach-O' || continue
+    architectures=$(/usr/bin/lipo -archs "$binary")
+    if [[ "$architectures" == arm64 ]]; then
+      continue
+    fi
+    if [[ " $architectures " != *" arm64 "* ]]; then
+      print -u2 "Packaged Mach-O has no arm64 slice: $binary ($architectures)"
+      exit 1
+    fi
+    temporary="${binary}.arm64-thin"
+    mode=$(/usr/bin/stat -f '%Lp' "$binary")
+    /usr/bin/lipo "$binary" -thin arm64 -output "$temporary"
+    /bin/chmod "$mode" "$temporary"
+    /bin/mv -f "$temporary" "$binary"
+  done < <(/usr/bin/find "$app_path" -type f -print0)
+}
+
+build_all() {
+  require_qt6
+  mkdir -p "$BUILD_ROOT/genesyslib" "$BUILD_ROOT/iconfig"
+  (
+    cd "$BUILD_ROOT/genesyslib"
+    "$QMAKE" "$ROOT_DIR/GeneSysLib/Qt/GeneSysLib.pro" \
+      CONFIG+=release BOOST_PREFIX="$BOOST_ROOT_RESOLVED" \
+      QMAKE_MACOSX_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET"
+    /usr/bin/make -j"${BUILD_JOBS:-4}"
+  )
+  (
+    cd "$BUILD_ROOT/iconfig"
+      "$QMAKE" "$ROOT_DIR/iConfig/iConnectivityiConfig.pro" \
+      CONFIG+=release BOOST_PREFIX="$BOOST_ROOT_RESOLVED" \
+      GENESYSLIB_BUILD_DIR=../genesyslib \
+      QMAKE_MACOSX_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET"
+    /usr/bin/make -j"${BUILD_JOBS:-4}"
+    local plist="$BUILD_ROOT/iconfig/iConnectivity iConfig.app/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.vaultnaemsae.iconfig-modern" "$plist"
+    /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string 'iConfig Modern'" "$plist" 2>/dev/null || \
+      /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'iConfig Modern'" "$plist"
+    /usr/libexec/PlistBuddy -c "Add :CFBundleName string 'iConfig Modern'" "$plist" 2>/dev/null || \
+      /usr/libexec/PlistBuddy -c "Set :CFBundleName 'iConfig Modern'" "$plist"
+    /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $BUNDLE_SHORT_VERSION" "$plist" 2>/dev/null || \
+      /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $BUNDLE_SHORT_VERSION" "$plist"
+    /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $BUNDLE_BUILD_NUMBER" "$plist" 2>/dev/null || \
+      /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUNDLE_BUILD_NUMBER" "$plist"
+  )
+}
+
+status() {
+  require_qt6
+  "$QMAKE" -v
+  /usr/bin/clang++ --version | head -n 2
+  print "SDK: $(xcrun --sdk macosx --show-sdk-version)"
+  print "SDK path: $(xcrun --sdk macosx --show-sdk-path)"
+  print "Active Qt root: $QT_ROOT_RESOLVED"
+  print "Active qmake: $QMAKE"
+  print "Active Qt version: $("$QMAKE" -query QT_VERSION)"
+  print "Release Qt root: $RELEASE_QT_ROOT"
+  if [[ -x "$RELEASE_QT_ROOT/bin/qmake" ]]; then
+    print "Release qmake: $RELEASE_QT_ROOT/bin/qmake"
+    print "Release Qt version: $("$RELEASE_QT_ROOT/bin/qmake" -query QT_VERSION)"
+  else
+    print "Release qmake: NOT INSTALLED"
+  fi
+  print "Boost root: $BOOST_ROOT_RESOLVED"
+  print "Build root: $BUILD_ROOT"
+  print "Deployment target: $DEPLOYMENT_TARGET"
+  print "Release architecture: arm64"
+  print "Project version: $PROJECT_VERSION"
+  print "Bundle short version/build: $BUNDLE_SHORT_VERSION ($BUNDLE_BUILD_NUMBER)"
+}
+
+run_tests() {
+  build_all
+  local suite project target suite_build
+  local suites=(
+    controller-remap-model
+    channel-remap-model
+    remap-batching
+    filter-batching
+    preset-serialization
+    restore-planner
+    namespace-import
+  )
+  for suite in $suites; do
+    project="$ROOT_DIR/tests/$suite/${suite//-/_}_test.pro"
+    target="${suite//-/_}_test"
+    suite_build="$BUILD_ROOT/tests/$suite"
+    mkdir -p "$suite_build"
+    (
+      cd "$suite_build"
+      "$QMAKE" "$project" BOOST_PREFIX="$BOOST_ROOT_RESOLVED" \
+        GENESYSLIB_BUILD_DIR=../../genesyslib
+      /usr/bin/make -j"${BUILD_JOBS:-4}"
+      QT_QPA_PLATFORM=offscreen "./$target"
+    )
+  done
+}
+
+package_app() {
+  require_release_qt
+  build_all
+  [[ -x "$MACDEPLOYQT" ]] || { print -u2 "macdeployqt not found"; exit 1; }
+  local staging="$BUILD_ROOT/package"
+  local source_app="$BUILD_ROOT/iconfig/iConnectivity iConfig.app"
+  local deployed_app="$staging/iConfig Modern.app"
+  local plugin_root
+  plugin_root=$("$QMAKE" -query QT_INSTALL_PLUGINS)
+  /bin/rm -rf "$staging"
+  mkdir -p "$staging"
+  /usr/bin/ditto "$source_app" "$deployed_app"
+  mkdir -p "$deployed_app/Contents/PlugIns/platforms" \
+    "$deployed_app/Contents/PlugIns/styles"
+  /usr/bin/ditto "$plugin_root/platforms/libqcocoa.dylib" \
+    "$deployed_app/Contents/PlugIns/platforms/libqcocoa.dylib"
+  /usr/bin/ditto "$plugin_root/styles/libqmacstyle.dylib" \
+    "$deployed_app/Contents/PlugIns/styles/libqmacstyle.dylib"
+  "$MACDEPLOYQT" "$deployed_app" -verbose=2 -no-plugins -no-codesign \
+    -executable="$deployed_app/Contents/PlugIns/platforms/libqcocoa.dylib" \
+    -executable="$deployed_app/Contents/PlugIns/styles/libqmacstyle.dylib"
+  thin_bundle_arm64 "$deployed_app"
+  print "Self-contained unsigned staging app: $deployed_app"
+}
+
+release_check() {
+  run_tests
+  "$ROOT_DIR/scripts/release-check.sh" "$BUILD_ROOT/package/iConfig Modern.app" \
+    "$DEPLOYMENT_TARGET"
+}
+
+case "$COMMAND" in
+  status) status ;;
+  build) build_all ;;
+  test) run_tests ;;
+  package) package_app ;;
+  release-check) release_check ;;
+  *)
+    print -u2 "usage: ./dev {status|build|test|package|release-check}"
+    exit 2
+    ;;
+esac
