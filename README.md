@@ -14,6 +14,7 @@ CoreMIDI backend.
 - Project version: **0.1.0-beta.1**, based on iConfig 4.2.7
 - Validated architecture: Apple Silicon (`arm64`)
 - Validated device: iConnectAUDIO4+, firmware 2.0.5
+- Release icon: fork-specific, trademark-neutral connectivity symbol
 - Toolchain used for rehabilitation: Qt 6.11.2, Apple clang 21, C++17
 - Preset Restore: **experimental**; one isolated object was restored and rolled
   back successfully, but arbitrary full-device restores have not been validated

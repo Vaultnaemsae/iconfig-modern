@@ -21,7 +21,7 @@
   </property>
   <property name="windowIcon">
    <iconset resource="Resources.qrc">
-    <normaloff>:/Icon/Icons.ico</normaloff>:/Icon/Icons.ico</iconset>
+    <normaloff>:/Icon/AppIcon.png</normaloff>:/Icon/AppIcon.png</iconset>
   </property>
   <property name="dockOptions">
    <set>QMainWindow::AllowNestedDocks|QMainWindow::AllowTabbedDocks|QMainWindow::AnimatedDocks|QMainWindow::ForceTabbedDocks|QMainWindow::VerticalTabs</set>

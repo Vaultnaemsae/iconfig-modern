@@ -110,8 +110,8 @@ support language, but remain separate repositories, downloads, and releases.
 
 ## Finite path to first beta
 
-1. obtain or create the modern transparent padded app icon and confirm branding
-   permission;
+1. verify the reviewed transparent, padded, trademark-neutral app icon and its
+   source/iconset hashes;
 2. initialize from the real upstream Git history and commit the audited overlay;
 3. run `./dev test` and the hardware read-only regression;
 4. use the pinned release Qt toolchain, run `./dev package`, and verify every

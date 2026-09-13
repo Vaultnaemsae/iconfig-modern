@@ -7,6 +7,8 @@ Based on iConnectivity iConfig 4.2.7.
 - migrated the maintained macOS build from Qt 4-era assumptions through Qt 5
   validation to Qt 6.11;
 - added native Apple Silicon support and current CoreMIDI compatibility;
+- added a conservative, trademark-neutral macOS release icon with transparent
+  outer padding and complete standard icon sizes;
 - repaired communicator shutdown mutex lifetime;
 - repaired MIDI Controller Remap and Channel Remap UI/model handling;
 - repaired MIDI port/controller filter and remap delayed-write identity;

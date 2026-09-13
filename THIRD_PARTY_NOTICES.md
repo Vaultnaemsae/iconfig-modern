@@ -79,5 +79,6 @@ complete embedded notices must be preserved and audited separately.
 
 Legacy icons, device images, and product names came from the original upstream
 tree. GPL source publication does not itself grant trademark rights. The modern
-binary release requires a new, legally appropriate icon. The local Revision 26
+binary uses a new trademark-neutral connectivity icon; it does not repurpose an
+iConnectivity or Vaultnaemsae commercial-product logo. The local Revision 26
 protocol PDF is excluded pending separate redistribution permission.

@@ -9,7 +9,7 @@
 ├── rtmidi-2.1.1/               pinned third-party source dependency
 ├── tests/                      offline regression suites
 ├── scripts/                    release and binary-audit helpers
-├── docs/                       build, test, audit, and release documentation
+├── docs/                       build, test, audit, release, and publication copy
 ├── dev                         project-owned build/test/package entry point
 ├── README.md
 ├── CHANGELOG.md
@@ -39,6 +39,7 @@
 | local Revision 26 protocol PDF | documentation with unproven redistribution permission | archive; link official source instead |
 | frozen Qt 5/Qt 6 apps and manifests | local reference artifacts | retain under ignored archive only |
 
-The legacy opaque icon remains source evidence, but it is not acceptable as the
-public binary icon. A separately reviewed, transparent and correctly padded
-replacement is a release input rather than a generated build artifact.
+The legacy opaque icon remains preserved in genuine upstream history and the
+local release archive, but it is not active in the maintained binary. The
+reviewed replacement is transparent, correctly padded, trademark-neutral, and
+stored with its complete standard macOS size set under `iConfig/Assets/`.

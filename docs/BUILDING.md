@@ -60,7 +60,7 @@ It creates a self-contained, arm64-only, **unsigned** staging app under
 `ICONFIG_RELEASE_BUILD_ROOT`.
 
 `release-check` intentionally fails until all release gates—including the
-approved modern icon, Developer ID signature, notarization ticket, clean Git
+reviewed modern icon, Developer ID signature, notarization ticket, clean Git
 state, architecture, load paths, and minimum OS—are satisfied.
 
 ## macOS floor
@@ -77,3 +77,14 @@ The Homebrew deployment is not a release candidate: its 21 Qt support dylibs
 were built with macOS 26. The pinned official Qt 6.11.2 `qtbase` distribution
 has been verified at macOS 13.0 and packages without those support dylibs. See
 [RELEASE_TOOLCHAIN](RELEASE_TOOLCHAIN.md) for exact provenance and hashes.
+
+## Application icon
+
+The reviewed source master is `iConfig/Assets/AppIconMaster.png`. Standard macOS
+PNG sizes are retained under `iConfig/Assets/AppIcon.iconset/`; equivalent asset
+catalog metadata is under `iConfig/Assets/AppIcon.xcassets/`. The active
+`iConfig/Icon.icns` was compiled with Apple's `actool`, because the current
+`iconutil` rejects even a round-trip of the legacy ICNS on the validation host.
+The release checker verifies the transparent 1024-pixel master, every standard
+size, the compiled bundle resource, and rejection of the known opaque legacy
+icon hash.

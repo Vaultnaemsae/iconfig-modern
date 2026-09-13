@@ -1913,7 +1913,7 @@ void MainWindow::on_actionAbout_triggered() {
       "<center>"
       "<table>"
       "<tr>"
-      "   <th>Version:" + QCoreApplication::applicationVersion() +
+      "   <th>Version: " + QCoreApplication::applicationVersion() +
       "</th>"
       "</tr>"
       "<tr><th>Based on iConnectivity iConfig " ICONFIG_BASE_VERSION "</th></tr>"

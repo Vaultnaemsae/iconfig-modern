@@ -49,8 +49,10 @@ support site rather than copied into a public release without permission.
 
 ## Branding
 
-The public repository and binary must describe this as a community-maintained
+The public repository and binary describe this as a community-maintained
 compatibility fork. iConnectivity names and device images identify compatible
-hardware; they do not imply current endorsement. A new legally appropriate app
-icon is required before binary release. The opaque legacy icon is retained only
-as historical source until that replacement is supplied.
+hardware; they do not imply current endorsement. The maintained app icon is an
+original, trademark-neutral three-point connectivity symbol and does not use an
+iConnectivity or Vaultnaemsae commercial-product mark. The opaque legacy icon
+remains available in genuine upstream history and in the local release archive;
+it is not used by the maintained application bundle or Qt window surfaces.

@@ -6,6 +6,7 @@ ROOT_DIR=${0:A:h:h}
 APP_PATH=${1:-}
 SUPPORTED_FLOOR=${2:-14.0}
 UPSTREAM_BASE=e4b804a709dbc7060df765b2a950f12bd2205420
+LEGACY_ICON_SHA256=7aee7145ee2fce65ddfa27b2cc506497c88247b1e3ab3c5067ccd4bc6bb98085
 failures=0
 project_version=$(/usr/bin/awk '/^#define ICONFIG_VERSION / { gsub(/"/, "", $3); print $3 }' \
   "$ROOT_DIR/iConfig/Version.h")
@@ -56,7 +57,7 @@ else
   fail ".release-archive is not ignored"
 fi
 
-for doc_path in README.md LICENSE LICENSE.md THIRD_PARTY_NOTICES.md PROVENANCE.md CHANGELOG.md docs/BUILDING.md docs/TESTING.md docs/LICENSING_AUDIT.md docs/RELEASE_AUDIT.md docs/RELEASE.md docs/RELEASE_TOOLCHAIN.md docs/SOURCE_TREE.md; do
+for doc_path in README.md LICENSE LICENSE.md THIRD_PARTY_NOTICES.md PROVENANCE.md CHANGELOG.md docs/BUILDING.md docs/TESTING.md docs/LICENSING_AUDIT.md docs/RELEASE_AUDIT.md docs/RELEASE.md docs/RELEASE_TOOLCHAIN.md docs/RELEASE_NOTES_0.1.0-beta.1.md docs/WEBSITE_COPY.md docs/SOURCE_TREE.md; do
   [[ -f "$ROOT_DIR/$doc_path" ]] && pass "$doc_path present" || fail "$doc_path missing"
 done
 
@@ -137,16 +138,70 @@ if [[ -d "$ROOT_DIR/.git" ]]; then
     fail "HEAD is not tagged v$project_version"
 fi
 
-if [[ -d "$ROOT_DIR/iConfig/Assets/AppIcon.appiconset" ]]; then
-  pass "modern release icon set present"
+icon_source="$ROOT_DIR/iConfig/Icon.icns"
+icon_master="$ROOT_DIR/iConfig/Assets/AppIconMaster.png"
+iconset="$ROOT_DIR/iConfig/Assets/AppIcon.iconset"
+if [[ -f "$icon_source" ]]; then
+  icon_sha256=$(/usr/bin/shasum -a 256 "$icon_source" | /usr/bin/awk '{print $1}')
+  [[ "$icon_sha256" != "$LEGACY_ICON_SHA256" ]] && \
+    pass "active release icon differs from the known opaque legacy icon" || \
+    fail "active release icon still equals the known opaque legacy icon"
 else
-  fail "modern transparent padded release icon has not been supplied"
+  fail "active release icon is missing"
+fi
+
+if [[ -f "$icon_master" ]] && \
+   [[ $(/usr/bin/sips -g pixelWidth "$icon_master" 2>/dev/null | /usr/bin/awk '/pixelWidth/ {print $2}') == 1024 ]] && \
+   [[ $(/usr/bin/sips -g pixelHeight "$icon_master" 2>/dev/null | /usr/bin/awk '/pixelHeight/ {print $2}') == 1024 ]] && \
+   [[ $(/usr/bin/sips -g hasAlpha "$icon_master" 2>/dev/null | /usr/bin/awk '/hasAlpha/ {print $2}') == yes ]]; then
+  pass "1024px release-icon master has an alpha channel"
+else
+  fail "release-icon master is missing, incorrectly sized, or lacks alpha"
+fi
+
+icon_sizes=(
+  icon_16x16.png:16 icon_16x16@2x.png:32
+  icon_32x32.png:32 icon_32x32@2x.png:64
+  icon_128x128.png:128 icon_128x128@2x.png:256
+  icon_256x256.png:256 icon_256x256@2x.png:512
+  icon_512x512.png:512 icon_512x512@2x.png:1024
+)
+iconset_valid=true
+for icon_spec in $icon_sizes; do
+  icon_file="$iconset/${icon_spec%%:*}"
+  expected_size=${icon_spec##*:}
+  actual_width=$(/usr/bin/sips -g pixelWidth "$icon_file" 2>/dev/null | /usr/bin/awk '/pixelWidth/ {print $2}' || true)
+  actual_height=$(/usr/bin/sips -g pixelHeight "$icon_file" 2>/dev/null | /usr/bin/awk '/pixelHeight/ {print $2}' || true)
+  [[ -f "$icon_file" && "$actual_width" == "$expected_size" && \
+     "$actual_height" == "$expected_size" ]] || iconset_valid=false
+done
+if $iconset_valid; then
+  pass "release icon set contains every required macOS size"
+else
+  fail "release icon set is missing required sizes or dimensions"
+fi
+
+if rg -n ':/Icon/Icons\.ico' "$ROOT_DIR/iConfig/Resources.qrc" \
+     "$ROOT_DIR/iConfig/MainWindow.ui" \
+     "$ROOT_DIR/iConfig/DeviceSelectionDialog.ui" >/dev/null; then
+  fail "legacy Windows icon remains active in a macOS/Qt icon surface"
+else
+  pass "legacy Windows icon is not referenced by active macOS/Qt icon surfaces"
 fi
 
 if [[ ! -d "$APP_PATH" ]]; then
   fail "packaged app missing: $APP_PATH"
 else
   executable="$APP_PATH/Contents/MacOS/iConnectivity iConfig"
+  bundle_icon="$APP_PATH/Contents/Resources/Icon.icns"
+  bundle_icon_name=$(/usr/bin/plutil -extract CFBundleIconFile raw -o - \
+    "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)
+  if [[ "$bundle_icon_name" == Icon.icns && -f "$bundle_icon" && \
+       $(/usr/bin/shasum -a 256 "$bundle_icon" | /usr/bin/awk '{print $1}') == "$icon_sha256" ]]; then
+    pass "bundle Info.plist and icon resource use the reviewed release icon"
+  else
+    fail "bundle icon binding or packaged icon hash is inconsistent"
+  fi
   file "$executable" | grep -q 'arm64' && pass "main executable is arm64" || fail "main executable is not arm64"
   if "$ROOT_DIR/scripts/verify-runtime-deps.sh" "$APP_PATH"; then
     pass "packaged Mach-O load commands are relocatable and complete"

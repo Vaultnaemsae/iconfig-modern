@@ -9,6 +9,7 @@
 #include "Version.h"
 
 #include <QApplication>
+#include <QIcon>
 #include <QOperatingSystemVersion>
 #include <QProcess>
 #include <QSettings>
@@ -56,6 +57,7 @@ int main(int argc, char *argv[]) {
     //QCoreApplication::setApplicationVersion("4.2.5"); //zx, 2017-04-26
     //QCoreApplication::setApplicationVersion("4.2.6"); //zx, 2017-06-22
     QCoreApplication::setApplicationVersion(ICONFIG_VERSION);
+    instance.setWindowIcon(QIcon(":/Icon/AppIcon.png"));
 
 #ifdef Q_OS_MAC
     QSettings appearanceSettings;

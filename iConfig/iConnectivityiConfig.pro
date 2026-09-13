@@ -245,6 +245,8 @@ OTHER_FILES +=                                                  \
     ./Images/block_miobox.png                                   \
     ./Images/block_miodevice.png                                \
     ./Icons.ico                                                 \
+    ./Assets/AppIconMaster.png                                  \
+    ./Assets/AppIcon.xcassets/AppIcon.appiconset/Contents.json  \
     ./iconResource.rc                                           \
     ./Icon.icns
 

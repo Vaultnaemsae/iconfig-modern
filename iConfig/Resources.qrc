@@ -18,6 +18,7 @@
         <file>Images/HalfBlock.png</file>
     </qresource>
     <qresource prefix="/Icon">
+        <file alias="AppIcon.png">Assets/AppIconMaster.png</file>
         <file>Icons.ico</file>
     </qresource>
     <qresource prefix="/Meters">
