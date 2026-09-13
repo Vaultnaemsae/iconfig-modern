@@ -79,3 +79,13 @@ endorsement.
 
 Vaultnaemsae maintains this compatibility fork as a legacy/community project.
 Issues and contributions are welcome in this repository.
+
+## Support
+
+iConfig Modern is free and open source.
+
+If it has been useful to you and you'd like to support future development, you can buy me a coffee:
+
+☕ https://buymeacoffee.com/vaultnaemsae
+
+Thank you for your support!
