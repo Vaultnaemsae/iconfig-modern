@@ -28,7 +28,11 @@ MixerPortWidget::MixerPortWidget(DeviceInfoPtr device, Word audioPortID, Byte mi
   topLayout->setAlignment(Qt::AlignTop);
 
   signalMapper = new QSignalMapper(this);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  connect(signalMapper, SIGNAL(mappedInt(int)),
+#else
   connect(signalMapper, SIGNAL(mapped(int)),
+#endif
           this,         SLOT(linkButtonClicked(int)));
 
   this->setLayout(topLayout);
@@ -62,7 +66,7 @@ void MixerPortWidget::callDoAdjustSize() {
 void MixerPortWidget::paintEvent(QPaintEvent *)
 {
   QStyleOption opt;
-  opt.init(this);
+  opt.initFrom(this);
   QPainter p(this);
   style()->drawPrimitive(QStyle::PE_Widget, &opt, &p, this);
 }

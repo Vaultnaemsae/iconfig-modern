@@ -19,9 +19,11 @@
 #include <iterator>
 #include <list>
 #include <map>
+#include <memory>
 #include <queue>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -42,7 +44,6 @@
 #include <boost/scoped_ptr.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/swap.hpp>
-#include <boost/tr1/unordered_map.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <boost/type_traits.hpp>
 #include <boost/variant.hpp>
@@ -58,7 +59,6 @@
 #include <QDialog>
 #include <QFile>
 #include <QFileDialog>
-#include <QHttp>
 #include <QLabel>
 #include <QList>
 #include <QLineEdit>
@@ -74,7 +74,6 @@
 #include <QPointer>
 #include <QProgressBar>
 #include <QProgressDialog>
-#include <QRegExp>
 #include <QSet>
 #include <QSettings>
 #include <QSignalMapper>

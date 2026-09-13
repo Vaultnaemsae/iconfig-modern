@@ -244,10 +244,10 @@ void AudioInfoForm::createUSBDeviceTableV1(const AudioInfo &audioInfo) {
     ui->verticalTablesLayout->addWidget(table);
 
     auto *const horzHdr = table->horizontalHeader();
-    horzHdr->setResizeMode(QHeaderView::ResizeToContents);
+    horzHdr->setSectionResizeMode(QHeaderView::ResizeToContents);
     horzHdr->setDefaultSectionSize(kDefaultColumnSize);
-    horzHdr->setResizeMode(AudioUSBDeviceColumns::Jack, QHeaderView::Fixed);
-    horzHdr->setResizeMode(AudioUSBDeviceColumns::Name, QHeaderView::Stretch);
+    horzHdr->setSectionResizeMode(AudioUSBDeviceColumns::Jack, QHeaderView::Fixed);
+    horzHdr->setSectionResizeMode(AudioUSBDeviceColumns::Name, QHeaderView::Stretch);
 
     const auto &b = startUSBAudioPortID();
     const auto &e = endUSBAudioPortID(audioInfo);
@@ -303,11 +303,11 @@ void AudioInfoForm::createUSBDeviceTableV2() {
   ui->verticalTablesLayout->addWidget(table);
 
   auto *const horzHdr = table->horizontalHeader();
-  horzHdr->setResizeMode(QHeaderView::ResizeToContents);
+  horzHdr->setSectionResizeMode(QHeaderView::ResizeToContents);
   horzHdr->setDefaultSectionSize(kDefaultColumnSize);
-  horzHdr->setResizeMode(AudioUSBDeviceColumns::Jack, QHeaderView::Fixed);
-  horzHdr->setResizeMode(AudioUSBDeviceColumns::Name, QHeaderView::Stretch);
-  horzHdr->setResizeMode(AudioUSBDeviceColumns::HostName, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(AudioUSBDeviceColumns::Jack, QHeaderView::Fixed);
+  horzHdr->setSectionResizeMode(AudioUSBDeviceColumns::Name, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(AudioUSBDeviceColumns::HostName, QHeaderView::Stretch);
 
   int row = 0;
   device->for_each<AudioPortParm>([&](const AudioPortParm & audioPortParm) {
@@ -350,12 +350,12 @@ void AudioInfoForm::createUSBHostTableV2(Byte hostJack) {
   ui->verticalTablesLayout->addWidget(table);
 
   auto *const horzHdr = table->horizontalHeader();
-  horzHdr->setResizeMode(QHeaderView::ResizeToContents);
+  horzHdr->setSectionResizeMode(QHeaderView::ResizeToContents);
   horzHdr->setDefaultSectionSize(kDefaultColumnSize);
-  horzHdr->setResizeMode(AudioUSBHostColumns::Device, QHeaderView::Fixed);
-  horzHdr->setResizeMode(AudioUSBHostColumns::Name, QHeaderView::Stretch);
-  horzHdr->setResizeMode(AudioUSBHostColumns::Vendor, QHeaderView::Stretch);
-  horzHdr->setResizeMode(AudioUSBHostColumns::Product, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(AudioUSBHostColumns::Device, QHeaderView::Fixed);
+  horzHdr->setSectionResizeMode(AudioUSBHostColumns::Name, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(AudioUSBHostColumns::Vendor, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(AudioUSBHostColumns::Product, QHeaderView::Stretch);
 
   int row = 0;
   device->for_each<AudioPortParm>([&](const AudioPortParm & audioPortParm) {
@@ -399,10 +399,10 @@ void AudioInfoForm::createEthernetTableV2(Byte hostJack) {
   ui->verticalTablesLayout->addWidget(table);
 
   auto *const horzHdr = table->horizontalHeader();
-  horzHdr->setResizeMode(QHeaderView::ResizeToContents);
+  horzHdr->setSectionResizeMode(QHeaderView::ResizeToContents);
   horzHdr->setDefaultSectionSize(kDefaultColumnSize);
-  horzHdr->setResizeMode(EthernetColumns::Device, QHeaderView::Fixed);
-  horzHdr->setResizeMode(EthernetColumns::Name, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(EthernetColumns::Device, QHeaderView::Fixed);
+  horzHdr->setSectionResizeMode(EthernetColumns::Name, QHeaderView::Stretch);
 
   int row = 0;
   device->for_each<AudioPortParm>([&](const AudioPortParm & audioPortParm) {
@@ -432,10 +432,10 @@ void AudioInfoForm::createAnalogueTableV2() {
   ui->verticalTablesLayout->addWidget(table);
 
   auto *const horzHdr = table->horizontalHeader();
-  horzHdr->setResizeMode(QHeaderView::ResizeToContents);
+  horzHdr->setSectionResizeMode(QHeaderView::ResizeToContents);
   horzHdr->setDefaultSectionSize(kDefaultColumnSize);
-  horzHdr->setResizeMode(AnalogueColumns::Port, QHeaderView::Fixed);
-  horzHdr->setResizeMode(AnalogueColumns::Name, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(AnalogueColumns::Port, QHeaderView::Fixed);
+  horzHdr->setSectionResizeMode(AnalogueColumns::Name, QHeaderView::Stretch);
 
   int row = 0;
   device->for_each<AudioPortParm>([&](const AudioPortParm & audioPortParm) {

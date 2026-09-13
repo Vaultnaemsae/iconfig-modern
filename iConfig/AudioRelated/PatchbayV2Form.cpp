@@ -10,6 +10,7 @@
 
 #include <QPaintEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QDebug>
 
 #include <algorithm>
@@ -429,7 +430,7 @@ void PatchbayV2Form::drawRightTriangle(QPainter &painter, const QPointF &point,
 
 void PatchbayV2Form::mousePressEvent(QMouseEvent *event) {
   isLeftMouseDown = event->buttons().testFlag(Qt::LeftButton);
-  mouseLocation = event->posF();
+  mouseLocation = event->localPos();
   dashTimer->start(100);
   repaint();
 }
@@ -437,7 +438,7 @@ void PatchbayV2Form::mousePressEvent(QMouseEvent *event) {
 void PatchbayV2Form::mouseReleaseEvent(QMouseEvent *event) {
   using namespace std;
   isLeftMouseDown = event->buttons().testFlag(Qt::LeftButton);
-  mouseLocation = event->posF();
+  mouseLocation = event->localPos();
 
   if (gridRect().contains(mouseLocation)) {
     if (m_source->isPatched(fromDevice, toDevice)) {
@@ -457,7 +458,7 @@ void PatchbayV2Form::mouseReleaseEvent(QMouseEvent *event) {
 }
 
 void PatchbayV2Form::mouseMoveEvent(QMouseEvent *event) {
-  mouseLocation = event->posF();
+  mouseLocation = event->localPos();
   repaint();
 }
 

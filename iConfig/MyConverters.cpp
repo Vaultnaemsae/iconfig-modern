@@ -27,10 +27,10 @@ NetAddr toNetAddr(QString value) {
   return addr;
 }
 
-QRegExp ipRegEx() {
+QRegularExpression ipRegEx() {
   static QString octet = "(?:[0-1]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])";
-  static QRegExp ipRegEx = QRegExp("^" + octet + "\\." + octet + "\\." + octet +
-                                   "\\." + octet + "$");
+  static QRegularExpression ipRegEx("^" + octet + "\\." + octet + "\\." + octet +
+                                    "\\." + octet + "$");
   return ipRegEx;
 }
 

@@ -12,9 +12,10 @@
 #include <boost/function.hpp>
 #endif
 
+#include <QStringList>
+
 class QComboBox;
 class QString;
-class QStringList;
 
 #ifndef Q_MOC_RUN
 typedef boost::function<bool(void)> GetBoolFunctor;

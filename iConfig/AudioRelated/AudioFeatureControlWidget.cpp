@@ -310,7 +310,7 @@ void AudioFeatureControlWidget::buildChannelNameLabel() {
 
     QHBoxLayout *lay = new QHBoxLayout();
     QWidget *wid = new QWidget();
-    lay->addWidget(outputConfigPushButton); lay->setMargin(0);
+    lay->addWidget(outputConfigPushButton); lay->setContentsMargins(0, 0, 0, 0);
     wid->setLayout(lay); wid->setContentsMargins(0,0,0,0);
     layout()->addWidget(wid);
     layout()->setAlignment(wid, Qt::AlignCenter);
@@ -792,7 +792,7 @@ void AudioFeatureControlWidget::buildMutePushButton() {
 
   QHBoxLayout *lay = new QHBoxLayout();
   QWidget *wid = new QWidget();
-  lay->addWidget(mutePushButton); lay->setMargin(0);
+  lay->addWidget(mutePushButton); lay->setContentsMargins(0, 0, 0, 0);
   wid->setLayout(lay); wid->setContentsMargins(0,0,0,0);
   layout()->addWidget(wid);
   layout()->setAlignment(wid, Qt::AlignCenter);
@@ -880,7 +880,7 @@ void AudioFeatureControlWidget::buildPhantomPowerPushButton() {
 
     invertBoxLayout->addWidget(phantomPowerPushButton);
     invertBoxLayout->addWidget(rightPhantomPowerPushButton);
-    invertBoxLayout->setMargin(0);
+    invertBoxLayout->setContentsMargins(0, 0, 0, 0);
     invertBox->setLayout(invertBoxLayout);
 
     invertBox->setStyleSheet(QString("QWidget { padding:0px; margin: 0px;}"));
@@ -892,7 +892,7 @@ void AudioFeatureControlWidget::buildPhantomPowerPushButton() {
   else {
     QHBoxLayout *lay = new QHBoxLayout();
     QWidget *wid = new QWidget();
-    lay->addWidget(phantomPowerPushButton); lay->setMargin(0);
+    lay->addWidget(phantomPowerPushButton); lay->setContentsMargins(0, 0, 0, 0);
     wid->setLayout(lay); wid->setContentsMargins(0,0,0,0);
     layout()->addWidget(wid);
     layout()->setAlignment(wid, Qt::AlignCenter);
@@ -960,7 +960,7 @@ void AudioFeatureControlWidget::buildHighImpedancePushButton()
 
     invertBoxLayout->addWidget(highImpedancePushButton);
     invertBoxLayout->addWidget(rightHighImpedancePushButton);
-    invertBoxLayout->setMargin(0);
+    invertBoxLayout->setContentsMargins(0, 0, 0, 0);
     invertBox->setLayout(invertBoxLayout);
 
     invertBox->setStyleSheet(QString("QWidget { padding:0px; margin: 0px;}"));
@@ -972,7 +972,7 @@ void AudioFeatureControlWidget::buildHighImpedancePushButton()
   else {
     QHBoxLayout *lay = new QHBoxLayout();
     QWidget *wid = new QWidget();
-    lay->addWidget(highImpedancePushButton); lay->setMargin(0);
+    lay->addWidget(highImpedancePushButton); lay->setContentsMargins(0, 0, 0, 0);
     wid->setLayout(lay); wid->setContentsMargins(0,0,0,0);
     layout()->addWidget(wid);
     layout()->setAlignment(wid, Qt::AlignCenter);

@@ -12,7 +12,9 @@
 
 #include <QFileDialog>
 #include <QDesktopServices>
+#include <QCryptographicHash>
 #include <QMessageBox>
+#include <QStandardPaths>
 #include <QDebug>
 
 
@@ -35,8 +37,12 @@ ICRestoreDialog::~ICRestoreDialog()
 }
 
 void ICRestoreDialog::loadFiles() {
-  QDir::root().mkpath(QDesktopServices::storageLocation(QDesktopServices::DataLocation) + "/presets");
-  QDir presetsDir = QDir(QDesktopServices::storageLocation(QDesktopServices::DataLocation) + "/presets");
+  QDir::root().mkpath(
+      QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+      "/presets");
+  QDir presetsDir = QDir(
+      QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+      "/presets");
 
   qDebug() << "Preset Device:" << MainWindow::extensionForPID(currentDevice->getPID());
 
@@ -62,12 +68,14 @@ void ICRestoreDialog::handleSelectionChanged() {
 }
 
 void ICRestoreDialog::loadDescription(const QString index) {
-  fileName = QDesktopServices::storageLocation(QDesktopServices::DataLocation) + "/presets/" + index;
+  const QString selectedFile =
+      QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+      "/presets/" + index;
 
-  QFile file(fileName);
+  QFile file(selectedFile);
   if (!file.open(QFile::ReadOnly)) {
     QMessageBox::warning(this, tr("Read Failed"),
-                         tr("Cannot read file %1:\n%2.").arg(fileName)
+                         tr("Cannot read file %1:\n%2.").arg(selectedFile)
                          .arg(file.errorString()));
     return;
   }
@@ -75,13 +83,37 @@ void ICRestoreDialog::loadDescription(const QString index) {
     QByteArray qData = file.readAll();
     file.close();
 
-    bool valid = (qData.size() > 22);
+    bool valid = qData.size() >= 21 && qData.left(3) == "iCM" &&
+        static_cast<unsigned char>(qData.at(3)) == currentDevice->getPID();
+    const unsigned char version =
+        valid ? static_cast<unsigned char>(qData.at(4)) : 0;
+    valid = valid && (version == 1 || version == 2);
 
     if (valid) {
-      int descSize = qData.at(5);
-      QString description = QString(qData.mid(6,descSize));
+      const QByteArray expectedHash = qData.right(16);
+      const QByteArray actualHash = QCryptographicHash::hash(
+          qData.left(qData.size() - 16), QCryptographicHash::Md5);
+      valid = expectedHash == actualHash;
+    }
 
+    QString description;
+    if (valid && version == 2) {
+      valid = qData.size() >= 22;
+      const int descSize = valid
+          ? static_cast<unsigned char>(qData.at(5)) : 0;
+      valid = valid && (6 + descSize <= qData.size() - 16);
+      if (valid) {
+        description = QString::fromLatin1(qData.constData() + 6, descSize);
+      }
+    }
+
+    if (valid) {
+      fileName = selectedFile;
       ui->textEditDescription->setText(description);
+    } else {
+      fileName.clear();
+      ui->textEditDescription->setText(
+          tr("Invalid or incompatible preset."));
     }
   }
 }

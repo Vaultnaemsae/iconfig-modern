@@ -73,7 +73,7 @@ MIDIPortRoutingForm::MIDIPortRoutingForm(DeviceInfoPtr _device,
     // create a GridLayout for the port selection and the table forms
     auto *const gridLayout = new QGridLayout(ui->portSelectionContainer);
     gridLayout->addWidget(portSelectionForm, 0, 0, 1, 1);
-    gridLayout->setMargin(0);
+    gridLayout->setContentsMargins(0, 0, 0, 0);
     gridLayout->setSpacing(0);
     gridLayout->setVerticalSpacing(0);
 
@@ -299,7 +299,7 @@ void MIDIPortRoutingForm::createTable() {
   // set the resize mode for the horizontal headers to stretch with the dialog
   auto *const horzHdr = ui->tableWidget->horizontalHeader();
   Q_ASSERT(horzHdr);
-  horzHdr->setResizeMode(QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(QHeaderView::Stretch);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -437,7 +437,7 @@ void MIDIPortRoutingForm::addLabel(int row, int col, MIDIPortInfo portInfo) {
   auto *const gridLayout = new QGridLayout();
 
   // set the grid layout margin to 0
-  gridLayout->setMargin(0);
+  gridLayout->setContentsMargins(0, 0, 0, 0);
 
   // add the text label to the layout
   gridLayout->addWidget(textLabel);

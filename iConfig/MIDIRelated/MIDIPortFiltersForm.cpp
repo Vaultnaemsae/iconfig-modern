@@ -20,6 +20,7 @@
 #include <boost/shared_ptr.hpp>
 #endif
 #include <QMutexLocker>
+#include <QDebug>
 
 using namespace GeneSysLib;
 using namespace MyAlgorithms;
@@ -97,7 +98,7 @@ MIDIPortFiltersForm::MIDIPortFiltersForm(CommPtr _comm, DeviceInfoPtr _device,
   // generate a grid layout for the port selection form
   auto *const gridLayout = new QGridLayout(ui->portSelectionContainer);
   gridLayout->addWidget(portSelectionForm, 0, 0, 1, 1);
-  gridLayout->setMargin(0);
+  gridLayout->setContentsMargins(0, 0, 0, 0);
   gridLayout->setSpacing(0);
   gridLayout->setVerticalSpacing(0);
 
@@ -193,7 +194,7 @@ MIDIPortFiltersForm::MIDIPortFiltersForm(CommPtr _comm, DeviceInfoPtr _device,
   // assert that the horizontal header is valid
   Q_ASSERT(horzHeader);
   // set the resize mode for the horizontal header to stretch with the parent
-  horzHeader->setResizeMode(QHeaderView::Stretch);
+  horzHeader->setSectionResizeMode(QHeaderView::Stretch);
 
   // loop through all rows
   for (auto row = 0; row < ui->tableWidget->rowCount();
@@ -282,18 +283,12 @@ void MIDIPortFiltersForm::sendUpdate() {
   // lock the mutex (it will be unlocked when it goes out of scope
   QMutexLocker locker(&updateMutex);
 
-  // get the iterator for the hash table
-  QHashIterator<FilterIDEnum, Word> i(updateList);
+  QSetIterator<FilterUpdateKey> i(updateList);
 
-  // iterate through the hash
   while (i.hasNext()) {
-    // move to the next hash value
-    i.next();
-
-    // get the port ID
-    const auto &portID = i.value();
-    // get the filter ID
-    const auto &filterID = i.key();
+    const auto update = i.next();
+    const auto &portID = update.first;
+    const auto &filterID = update.second;
 
     // get the filterID for the portID and filterID
     const auto &filterData = device->midiPortFilter(portID, filterID);
@@ -316,14 +311,16 @@ void MIDIPortFiltersForm::cellStateChange(int row, int col,
   // determine if it is a filter status
   const auto &isFilterStatus = contains(rowFilterMap, row);
 
+  if ((!isChannelStatus && !isFilterStatus) || (col < 0) ||
+      (col >= ui->tableWidget->columnCount())) {
+    qWarning() << "Ignoring invalid MIDI port filter cell:" << row << col;
+    return;
+  }
+
   // determine if the value should be set
   const auto &value = (state == BlockState::Full);
-
-  // stop the timer
-  sendTimer->stop();
-
-  // lock the update list
-  QMutexLocker locker(&updateMutex);
+  const auto &filterID = currentFilterID();
+  QSet<FilterUpdateKey> changedUpdates;
 
   // get the selected ports list
   const auto &selectedPorts = portSelectionForm->selectedPortIDs();
@@ -331,18 +328,33 @@ void MIDIPortFiltersForm::cellStateChange(int row, int col,
   // loop through the selected ports
   for (const auto &portID : selectedPorts) {
     // get the filter data for current selected port
-    auto &filterData = device->midiPortFilter(portID, currentFilterID());
+    auto &filterData = device->midiPortFilter(portID, filterID);
 
     // if it is a channel status
     if (isChannelStatus) {
       // get column filter status
       auto &colChFilterStatus = filterData.channelFilterStatus_at(col);
+      if (colChFilterStatus[rowChannelStatusMap.at(row)] == value) {
+        continue;
+      }
       colChFilterStatus.set(rowChannelStatusMap.at(row), value);
     } else if (isFilterStatus) {  // if it is a filter status
+      if (filterData.filterStatus()[rowFilterMap.at(row)] == value) {
+        continue;
+      }
       filterData.filterStatus().set(rowFilterMap.at(row), value);
     }
-    // add current portID and current filter ID to update list
-    updateList[currentFilterID()] = portID;
+    changedUpdates.insert(qMakePair(portID, filterID));
+  }
+
+  if (changedUpdates.isEmpty()) {
+    return;
+  }
+
+  sendTimer->stop();
+  {
+    QMutexLocker locker(&updateMutex);
+    updateList.unite(changedUpdates);
   }
   sendTimer->start(kBatchTime);
 }

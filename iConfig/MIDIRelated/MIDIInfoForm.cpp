@@ -213,9 +213,9 @@ void MIDIInfoForm::createDINTable(const MIDIInfo& midiInfo) {
     ui->verticalTablesLayout->addWidget(tableWidget);
 
     QHeaderView* horzHdr = tableWidget->horizontalHeader();
-    horzHdr->setResizeMode(QHeaderView::Fixed);
+    horzHdr->setSectionResizeMode(QHeaderView::Fixed);
     horzHdr->setDefaultSectionSize(kDefaultColumnSize);
-    horzHdr->setResizeMode(DINColumns::PortName, QHeaderView::Stretch);
+    horzHdr->setSectionResizeMode(DINColumns::PortName, QHeaderView::Stretch);
 
     const auto& b = dinStartPortID();
     const auto& e = dinEndPortID(midiInfo);
@@ -277,8 +277,8 @@ void MIDIInfoForm::createUSBDeviceTable(const MIDIInfo& midiInfo, Word jack) {
 
   QHeaderView* horzHdr = tableWidget->horizontalHeader();
   horzHdr->setDefaultSectionSize(kDefaultColumnSize);
-  horzHdr->setResizeMode(QHeaderView::Fixed);
-  horzHdr->setResizeMode(USBDeviceColumns::PortName, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(QHeaderView::Fixed);
+  horzHdr->setSectionResizeMode(USBDeviceColumns::PortName, QHeaderView::Stretch);
 
   const auto& b = usbDeviceStartPortID(midiInfo, jack);
   const auto& e = usbDeviceEndPortID(midiInfo, jack);
@@ -335,11 +335,11 @@ void MIDIInfoForm::createUSBHostTable(const MIDIInfo& midiInfo, Word jack) {
   ui->verticalTablesLayout->addWidget(tableWidget);
 
   QHeaderView* horzHdr = tableWidget->horizontalHeader();
-  horzHdr->setResizeMode(QHeaderView::Fixed);
+  horzHdr->setSectionResizeMode(QHeaderView::Fixed);
   horzHdr->setDefaultSectionSize(kDefaultColumnSize);
-  horzHdr->setResizeMode(USBHostColumns::PortName, QHeaderView::Stretch);
-  horzHdr->setResizeMode(USBHostColumns::ConnectedDevice, QHeaderView::Stretch);
-  horzHdr->setResizeMode(USBHostColumns::Reserved, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(USBHostColumns::PortName, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(USBHostColumns::ConnectedDevice, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(USBHostColumns::Reserved, QHeaderView::Stretch);
 
   const auto& b = usbHostStartPortID(midiInfo, jack);
   const auto& e = usbHostEndPortID(midiInfo, jack);
@@ -404,13 +404,13 @@ void MIDIInfoForm::createEthernetTable(const MIDIInfo& midiInfo, Word jack) {
   ui->verticalTablesLayout->addWidget(tableWidget);
 
   auto* horzHdr = tableWidget->horizontalHeader();
-  horzHdr->setResizeMode(QHeaderView::ResizeToContents);
+  horzHdr->setSectionResizeMode(QHeaderView::ResizeToContents);
   horzHdr->setDefaultSectionSize(kDefaultColumnSize);
-  horzHdr->setResizeMode(EthernetColumns::Name, QHeaderView::Stretch);
-  horzHdr->setResizeMode(EthernetColumns::Session, QHeaderView::Stretch);
-  horzHdr->setResizeMode(EthernetColumns::ConnName, QHeaderView::Stretch);
-  horzHdr->setResizeMode(EthernetColumns::Input, QHeaderView::Fixed);
-  horzHdr->setResizeMode(EthernetColumns::Output, QHeaderView::Fixed);
+  horzHdr->setSectionResizeMode(EthernetColumns::Name, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(EthernetColumns::Session, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(EthernetColumns::ConnName, QHeaderView::Stretch);
+  horzHdr->setSectionResizeMode(EthernetColumns::Input, QHeaderView::Fixed);
+  horzHdr->setSectionResizeMode(EthernetColumns::Output, QHeaderView::Fixed);
 
   int row = 0;
   const auto& b = ethernetStartPortID(midiInfo);

@@ -53,7 +53,7 @@ void TableListener::addCornerLabel(QString cornerText) {
       cornerLabel->setFont(font);
 
       QGridLayout *gridLayout = new QGridLayout();
-      gridLayout->setMargin(3);
+      gridLayout->setContentsMargins(3, 3, 3, 3);
       gridLayout->addWidget(cornerLabel);
 
       // Add Label widget to button
@@ -294,7 +294,7 @@ void TableListener::setCellImage(int row, int col, BlockState::Enum state) {
           label->setPixmap(halfBlockPix);
           break;
         default:
-          label->setPixmap(nullptr);
+          label->setPixmap(QPixmap());
           break;
       }
     }

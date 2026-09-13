@@ -82,6 +82,15 @@ QMutex pendingQueriesMutex;
 QMutex queriedItemsMutex;
 QMutex attemptedQueriesMutex;
 
+DeviceInfo::RestorePlanEntry::RestorePlanEntry()
+    : returnCommand(Command::Unknown), setterCommand(Command::Unknown) {}
+
+DeviceInfo::RestoreRejectedRecord::RestoreRejectedRecord()
+    : returnCommand(Command::Unknown) {}
+
+DeviceInfo::RestorePlan::RestorePlan()
+    : valid(false), validatedRecordCount(0) {}
+
 DeviceInfo::DeviceInfo(CommPtr _comm, QObject* _parent)
     : QObject(_parent),
       usbHostMIDIDeviceDetails(),
@@ -89,9 +98,16 @@ DeviceInfo::DeviceInfo(CommPtr _comm, QObject* _parent)
       deviceID(),
       transID(),
       queryScreen(UnknownScreen),
+      maxWriteItems(0),
       currentQuery(),
       pendingQueries(),
-      comm(_comm) {
+      comm(_comm),
+      activeRestorePlan(),
+      restoreEntryIndex(0),
+      restoreCompletedCount(0),
+      restoreActive(false),
+      restoreAwaitingACK(false),
+      restoreFailed(false) {
   Q_ASSERT(_comm);
   registerAllHandlers();
 
@@ -113,9 +129,16 @@ DeviceInfo::DeviceInfo(CommPtr _comm, DeviceID _deviceID, Word _transID,
       deviceID(_deviceID),
       transID(_transID),
       queryScreen(UnknownScreen),
+      maxWriteItems(0),
       currentQuery(),
       pendingQueries(),
-      comm(_comm) {
+      comm(_comm),
+      activeRestorePlan(),
+      restoreEntryIndex(0),
+      restoreCompletedCount(0),
+      restoreActive(false),
+      restoreAwaitingACK(false),
+      restoreFailed(false) {
   Q_ASSERT(_comm);
   registerAllHandlers();
 
@@ -130,6 +153,12 @@ DeviceInfo::DeviceInfo(CommPtr _comm, DeviceID _deviceID, Word _transID,
 }
 
 DeviceInfo::~DeviceInfo() {
+  if (restoreActive) {
+    if (comm->timerThread) {
+      comm->timerThread->stopTimer();
+    }
+    comm->unRegisterExclusiveHandler();
+  }
   sysexMutex.lock();
   while (!sysexMessages.empty()) {
     sysexMessages.pop();
@@ -165,11 +194,12 @@ bool DeviceInfo::startQuery(Screen screen, const CommandQList& query) {
 
     // Queries before
     if (currentQuery.empty()) {
-      currentQuery = query.toStdList();
+      currentQuery = std::list<GeneSysLib::CmdEnum>(query.cbegin(), query.cend());
     }
     else {
       pendingQueriesMutex.lock();
-      pendingQueries.push(boost::make_tuple(screen, query.toStdList()));
+      pendingQueries.push(boost::make_tuple(
+          screen, std::list<GeneSysLib::CmdEnum>(query.cbegin(), query.cend())));
       pendingQueriesMutex.unlock();
       currentQueryMutex.unlock();
       return result;
@@ -184,7 +214,8 @@ bool DeviceInfo::startQuery(Screen screen, const CommandQList& query) {
   } else {
     currentQueryMutex.unlock();
     pendingQueriesMutex.lock();
-    pendingQueries.push(boost::make_tuple(screen, query.toStdList()));
+    pendingQueries.push(boost::make_tuple(
+        screen, std::list<GeneSysLib::CmdEnum>(query.cbegin(), query.cend())));
     pendingQueriesMutex.unlock();
   }
 
@@ -396,6 +427,11 @@ void DeviceInfo::unRegisterHandlerAllHandlers() {
 
 void DeviceInfo::timeout() {
 
+  if (restoreActive) {
+    failRestore(tr("Timed out waiting for the device to acknowledge the restore command."));
+    return;
+  }
+
   //printf("timed out!\n");
   sysexMutex.lock();
   while (!sysexMessages.empty()) {
@@ -533,7 +569,8 @@ bool DeviceInfo::sendNextSysex() {
 
       // post the current query
       queriedItemsMutex.lock();
-      queriedItems = queriedItems.toSet().toList();
+      queriedItems = QSet<GeneSysLib::CmdEnum>(queriedItems.cbegin(),
+                                                queriedItems.cend()).values();
       queriedItemsMutex.unlock();
 
       if (queryScreen != UnknownScreen) {
@@ -645,16 +682,44 @@ void DeviceInfo::handleUSBHostMIDIDeviceDetailData(CmdEnum _command,
   }
 }
 
-void DeviceInfo::handleACKData(CmdEnum, DeviceID, Word, commandData_t) {
-
-  if (!sysexMessages.empty()) {
-    emit writingProgress(maxWriteItems - sysexMessages.size());
-    //printf("576\n");
-    sendNextSysex();
-  } else {
-    comm->unRegisterExclusiveHandler();
-    emit writeCompleted();
+void DeviceInfo::handleACKData(CmdEnum command, DeviceID ackDeviceID,
+                               Word ackTransID, commandData_t commandData) {
+  if (!restoreActive) {
+    return;
   }
+
+  if (!restoreAwaitingACK || restoreEntryIndex >= activeRestorePlan.entries.size()) {
+    failRestore(tr("Received an unexpected restore acknowledgement."));
+    return;
+  }
+
+  const auto &entry = activeRestorePlan.entries.at(restoreEntryIndex);
+  const auto &ack = commandData.get<ACK>();
+  if (command != Command::ACK || !(ackDeviceID == deviceID) ||
+      ackTransID != transID || ack.commandID() != entry.setterCommand) {
+    failRestore(tr("Restore acknowledgement did not match the pending command."));
+    return;
+  }
+
+  if (ack.errorCode() != ErrorCode::NoError) {
+    failRestore(tr("Device rejected restore command 0x%1 with error %2.")
+                    .arg(static_cast<Word>(entry.setterCommand), 4, 16,
+                         QLatin1Char('0'))
+                    .arg(static_cast<int>(ack.errorCode())));
+    return;
+  }
+
+  restoreAwaitingACK = false;
+  ++restoreCompletedCount;
+  emit writingProgress(static_cast<int>(restoreCompletedCount));
+
+  if (restoreCompletedCount == activeRestorePlan.entries.size()) {
+    completeRestore();
+    return;
+  }
+
+  ++restoreEntryIndex;
+  sendCurrentRestoreEntry();
 }
 
 void DeviceInfo::addQuerySysex(CmdEnum command) {
@@ -1213,7 +1278,7 @@ Bytes DeviceInfo::serialize2(std::set<Command::Enum> commandsToSave, QString des
   description = description.mid(0,239);
   result += (unsigned char) description.size();
   for (int x = 0; x < description.size(); x++) {
-    result += description.at(x).toAscii();
+    result += description.at(x).toLatin1();
   }
 
   for (const auto& cmdPair : storedCommandData) {
@@ -1292,88 +1357,359 @@ Bytes DeviceInfo::serialize2midi(std::set<Command::Enum> commandsToSave, bool re
   return result;
 }
 
-bool DeviceInfo::deserialize(Bytes data) {
+bool DeviceInfo::knownPresetReturnCommand(CmdEnum command) {
+  switch (command) {
+  case Command::RetDevice:
+  case Command::RetCommandList:
+  case Command::RetInfoList:
+  case Command::RetInfo:
+  case Command::RetResetList:
+  case Command::RetSaveRestoreList:
+  case Command::RetEthernetPortInfo:
+  case Command::RetGizmoCount:
+  case Command::RetGizmoInfo:
+  case Command::RetMIDIInfo:
+  case Command::RetMIDIPortInfo:
+  case Command::RetMIDIPortFilter:
+  case Command::RetMIDIPortRemap:
+  case Command::RetMIDIPortRoute:
+  case Command::RetMIDIPortDetail:
+  case Command::RetRTPMIDIConnectionDetail:
+  case Command::RetUSBHostMIDIDeviceDetail:
+  case Command::RetAudioInfo:
+  case Command::RetAudioCfgInfo:
+  case Command::RetAudioPortInfo:
+  case Command::RetAudioPortCfgInfo:
+  case Command::RetAudioPortPatchbay:
+  case Command::RetAudioClockInfo:
+  case Command::RetAudioChannelName:
+  case Command::RetAudioPortMeterValue:
+  case Command::RetAudioGlobalParm:
+  case Command::RetAudioPortParm:
+  case Command::RetAudioDeviceParm:
+  case Command::RetAudioControlParm:
+  case Command::RetAudioControlDetail:
+  case Command::RetAudioControlDetailValue:
+  case Command::RetAudioClockParm:
+  case Command::RetAudioPatchbayParm:
+  case Command::RetMixerParm:
+  case Command::RetMixerPortParm:
+  case Command::RetMixerInputParm:
+  case Command::RetMixerOutputParm:
+  case Command::RetMixerInputControl:
+  case Command::RetMixerOutputControl:
+  case Command::RetMixerInputControlValue:
+  case Command::RetMixerOutputControlValue:
+  case Command::RetMixerMeterValue:
+    return true;
+  default:
+    return false;
+  }
+}
 
-  bool valid = true;
-  auto start = data.begin();
-  auto finish = data.end();
+bool DeviceInfo::restoreSetterForReturn(CmdEnum command,
+                                        CmdEnum *setterCommand,
+                                        QString *rejectionReason) {
+  CmdEnum setter = Command::Unknown;
+  QString rejection;
 
-  valid = (data.size() > 21);
+  switch (command) {
+  case Command::RetInfo: setter = Command::SetInfo; break;
+  case Command::RetEthernetPortInfo: setter = Command::SetEthernetPortInfo; break;
+  case Command::RetMIDIInfo: setter = Command::SetMIDIInfo; break;
+  case Command::RetMIDIPortInfo: setter = Command::SetMIDIPortInfo; break;
+  case Command::RetMIDIPortFilter: setter = Command::SetMIDIPortFilter; break;
+  case Command::RetMIDIPortRemap: setter = Command::SetMIDIPortRemap; break;
+  case Command::RetMIDIPortRoute: setter = Command::SetMIDIPortRoute; break;
+  case Command::RetMIDIPortDetail: setter = Command::SetMIDIPortDetail; break;
+  case Command::RetAudioCfgInfo: setter = Command::SetAudioCfgInfo; break;
+  case Command::RetAudioPortInfo: setter = Command::SetAudioPortInfo; break;
+  case Command::RetAudioPortCfgInfo: setter = Command::SetAudioPortCfgInfo; break;
+  case Command::RetAudioPortPatchbay: setter = Command::SetAudioPortPatchbay; break;
+  case Command::RetAudioClockInfo: setter = Command::SetAudioClockInfo; break;
+  case Command::RetAudioChannelName: setter = Command::SetAudioChannelName; break;
+  case Command::RetAudioGlobalParm: setter = Command::SetAudioGlobalParm; break;
+  case Command::RetAudioPortParm: setter = Command::SetAudioPortParm; break;
+  case Command::RetAudioDeviceParm: setter = Command::SetAudioDeviceParm; break;
+  case Command::RetAudioControlParm: setter = Command::SetAudioControlParm; break;
+  case Command::RetAudioControlDetail: setter = Command::SetAudioControlDetail; break;
+  case Command::RetAudioControlDetailValue:
+    setter = Command::SetAudioControlDetailValue;
+    break;
+  case Command::RetAudioClockParm: setter = Command::SetAudioClockParm; break;
+  case Command::RetAudioPatchbayParm: setter = Command::SetAudioPatchbayParm; break;
+  case Command::RetMixerParm: setter = Command::SetMixerParm; break;
+  case Command::RetMixerPortParm: setter = Command::SetMixerPortParm; break;
+  case Command::RetMixerInputParm: setter = Command::SetMixerInputParm; break;
+  case Command::RetMixerOutputParm: setter = Command::SetMixerOutputParm; break;
+  case Command::RetMixerInputControl: setter = Command::SetMixerInputControl; break;
+  case Command::RetMixerOutputControl: setter = Command::SetMixerOutputControl; break;
+  case Command::RetMixerInputControlValue:
+    setter = Command::SetMixerInputControlValue;
+    break;
+  case Command::RetMixerOutputControlValue:
+    setter = Command::SetMixerOutputControlValue;
+    break;
 
-  if (valid) {
-    Bytes magicStart;
-    // Verify the header
-    magicStart += 0x69, 0x43, 0x4D;
+  case Command::RetAudioPortMeterValue:
+  case Command::RetMixerMeterValue:
+    rejection = tr("transient meter data is not restorable");
+    break;
 
-    // Verify PID
-    magicStart += deviceID.pid();
+  case Command::RetDevice:
+  case Command::RetCommandList:
+  case Command::RetInfoList:
+  case Command::RetResetList:
+  case Command::RetSaveRestoreList:
+  case Command::RetGizmoCount:
+  case Command::RetGizmoInfo:
+  case Command::RetRTPMIDIConnectionDetail:
+  case Command::RetUSBHostMIDIDeviceDetail:
+  case Command::RetAudioInfo:
+    rejection = tr("query-only capability or descriptive data has no setter");
+    break;
 
-    // Version Number
-    magicStart += 0x01;
-
-    Bytes header;
-    copy(start, start + 5, std::back_inserter(header));
-
-    valid = (header == magicStart);
+  default:
+    rejection = tr("command is not on the restore whitelist");
+    break;
   }
 
-  if (!valid) { // try version 2 of a save file.
-    Bytes magicStart;
-    // Verify the header
-    magicStart += 0x69, 0x43, 0x4D;
+  if (setterCommand) {
+    *setterCommand = setter;
+  }
+  if (rejectionReason) {
+    *rejectionReason = rejection;
+  }
+  return setter != Command::Unknown;
+}
 
-    // Verify PID
-    magicStart += deviceID.pid();
+DeviceInfo::RestorePlan DeviceInfo::buildRestorePlan(
+    const Bytes &input, const QString &sourceStage) const {
+  RestorePlan plan;
+  plan.sourceStage = sourceStage;
 
-    // Version Number
-    magicStart += 0x02;
+  Bytes data(input);
+  if (data.size() < 21) {
+    plan.error = tr("Preset is shorter than the minimum valid envelope.");
+    return plan;
+  }
 
-    Bytes header;
-    copy(start, start + 5, std::back_inserter(header));
+  if (data[0] != 0x69 || data[1] != 0x43 || data[2] != 0x4D) {
+    plan.error = tr("Preset has an invalid file signature.");
+    return plan;
+  }
+  if (data[3] != static_cast<Byte>(deviceID.pid())) {
+    plan.error = tr("Preset is for a different device model.");
+    return plan;
+  }
 
-    valid = (header == magicStart);
+  const Byte version = data[4];
+  if (version != 0x01 && version != 0x02) {
+    plan.error = tr("Preset format version is not supported.");
+    return plan;
+  }
 
-    if (!valid) {
-//      return deserialize2(data);
-//    }
-//    else {
-      return valid;
+  size_t payloadOffset = 5;
+  if (version == 0x02) {
+    if (data.size() < 22) {
+      plan.error = tr("Preset version-2 header is truncated.");
+      return plan;
+    }
+    payloadOffset = 6 + data[5];
+    if (payloadOffset > data.size() - 16) {
+      plan.error = tr("Preset description extends beyond the file payload.");
+      return plan;
     }
   }
 
-  // Verify the footer
-  if (valid) {
-    BytesIter md5Iter = finish - 16;
-
-    auto hashAlgorithm = boost::shared_ptr<QCryptographicHash>(
-        new QCryptographicHash(QCryptographicHash::Md5));
-    hashAlgorithm->addData((char*)(data.data()), data.size() - 16);
-
-    // check the hash
-    auto hash = hashAlgorithm->result();
-    valid = std::equal(boost::begin(hash), boost::end(hash), md5Iter, [](Byte a, Byte b) {
-      return a == b;
-    });
+  QCryptographicHash hashAlgorithm(QCryptographicHash::Md5);
+  hashAlgorithm.addData(reinterpret_cast<const char *>(data.data()),
+                        data.size() - 16);
+  const QByteArray hash = hashAlgorithm.result();
+  if (!std::equal(hash.begin(), hash.end(), data.end() - 16,
+                  [](char a, Byte b) {
+                    return static_cast<Byte>(a) == b;
+                  })) {
+    plan.error = tr("Preset integrity hash does not match.");
+    return plan;
   }
 
-  if (valid) {
-    DeviceID storedDeviceID = deviceID;
-    Word storedTransID = transID;
+  auto blockStart = data.begin() + payloadOffset;
+  const auto payloadFinish = data.end() - 16;
+  int recordNumber = 0;
+  while (blockStart != payloadFinish) {
+    ++recordNumber;
+    if (*blockStart != 0xF0) {
+      plan.error = tr("Preset record %1 does not begin with SysEx.")
+                       .arg(recordNumber);
+      return plan;
+    }
 
-    //storedCommandData.clear();
-    //usbHostMIDIDeviceDetails.clear();
+    const auto blockEnd = find(blockStart, payloadFinish, (Byte)0xF7);
+    if (blockEnd == payloadFinish ||
+        std::distance(blockStart, blockEnd + 1) < 20) {
+      plan.error = tr("Preset record %1 is truncated.").arg(recordNumber);
+      return plan;
+    }
 
-    comm->parseBytes(start, finish, deviceID);
+    const auto blockSize = std::distance(blockStart, blockEnd + 1);
+    const Word productID =
+        (static_cast<Word>(blockStart[5]) << 7) | blockStart[6];
+    const CmdEnum returnCommand = static_cast<CmdEnum>(
+        (static_cast<Word>(blockStart[14]) << 7) | blockStart[15]);
+    const Word dataLength =
+        (static_cast<Word>(blockStart[16]) << 7) | blockStart[17];
 
-    deviceID = storedDeviceID;
-    transID = storedTransID;
+    if (productID != deviceID.pid()) {
+      plan.error = tr("Preset record %1 targets a different device model.")
+                       .arg(recordNumber);
+      return plan;
+    }
+    if (!knownPresetReturnCommand(returnCommand)) {
+      plan.error = tr("Preset record %1 contains unknown command 0x%2.")
+                       .arg(recordNumber)
+                       .arg(static_cast<Word>(returnCommand), 4, 16,
+                            QLatin1Char('0'));
+      return plan;
+    }
+    if (dataLength != blockSize - 20) {
+      plan.error = tr("Preset record %1 has an invalid data length.")
+                       .arg(recordNumber);
+      return plan;
+    }
+    if ((accumulate(blockStart + 5, blockEnd, 0x00) & 0x7F) != 0) {
+      plan.error = tr("Preset record %1 has an invalid checksum.")
+                       .arg(recordNumber);
+      return plan;
+    }
 
-    auto ackHandler = bind(&DeviceInfo::handleACKData, this, _1, _2, _3, _4);
-    comm->registerExclusiveHandler(Command::ACK, ackHandler);
-    writeAll();
+    Bytes frame(blockStart, blockEnd + 1);
+    commandData_t parsedData;
+    bool captured = false;
+    Handler capture = [&](CmdEnum, DeviceID, Word, commandData_t commandData) {
+      parsedData = commandData;
+      captured = true;
+    };
+    SysexParser parser;
+    parser.registerExclusiveHandler(returnCommand, capture);
+    const bool parserError = parser.parse(frame);
+    if (parserError || !captured) {
+      plan.error = tr("Preset record %1 could not be parsed safely.")
+                       .arg(recordNumber);
+      return plan;
+    }
+
+    ++plan.validatedRecordCount;
+    CmdEnum setterCommand = Command::Unknown;
+    QString rejectionReason;
+    if (restoreSetterForReturn(returnCommand, &setterCommand,
+                               &rejectionReason)) {
+      RestorePlanEntry entry;
+      entry.sourceStage = sourceStage;
+      entry.returnCommand = returnCommand;
+      entry.setterCommand = setterCommand;
+      entry.key = parsedData.key();
+      entry.data = parsedData;
+      entry.sysex = ::generate(deviceID, transID, setterCommand, parsedData);
+      plan.entries.push_back(entry);
+    } else {
+      RestoreRejectedRecord rejected;
+      rejected.sourceStage = sourceStage;
+      rejected.returnCommand = returnCommand;
+      rejected.reason = rejectionReason;
+      plan.rejectedRecords.push_back(rejected);
+    }
+
+    blockStart = blockEnd + 1;
   }
 
-  return valid;
+  plan.valid = true;
+  return plan;
+}
+
+bool DeviceInfo::dispatchRestorePlan(const RestorePlan &plan) {
+  if (!plan.valid || restoreActive || !currentQuery.empty() ||
+      !sysexMessages.empty()) {
+    return false;
+  }
+
+  activeRestorePlan = plan;
+  restoreEntryIndex = 0;
+  restoreCompletedCount = 0;
+  restoreAwaitingACK = false;
+  restoreActive = true;
+  restoreFailed = false;
+
+  emit writingStarted(static_cast<int>(activeRestorePlan.entries.size()));
+
+  if (activeRestorePlan.entries.empty()) {
+    completeRestore();
+    return true;
+  }
+
+  auto ackHandler = bind(&DeviceInfo::handleACKData, this, _1, _2, _3, _4);
+  comm->registerExclusiveHandler(Command::ACK, ackHandler);
+  sendCurrentRestoreEntry();
+  return true;
+}
+
+bool DeviceInfo::restoreInProgress() const { return restoreActive; }
+
+bool DeviceInfo::restoreFailureRecorded() const { return restoreFailed; }
+
+void DeviceInfo::sendCurrentRestoreEntry() {
+  if (!restoreActive || restoreAwaitingACK ||
+      restoreEntryIndex >= activeRestorePlan.entries.size()) {
+    return;
+  }
+
+  restoreAwaitingACK = true;
+  comm->sendSysex(activeRestorePlan.entries.at(restoreEntryIndex).sysex);
+}
+
+void DeviceInfo::failRestore(const QString &reason) {
+  if (!restoreActive) {
+    return;
+  }
+
+  if (comm->timerThread) {
+    comm->timerThread->stopTimer();
+  }
+  comm->unRegisterExclusiveHandler();
+  restoreActive = false;
+  restoreAwaitingACK = false;
+  restoreFailed = true;
+
+  QString detailedReason = reason;
+  if (restoreEntryIndex < activeRestorePlan.entries.size()) {
+    const auto &entry = activeRestorePlan.entries.at(restoreEntryIndex);
+    const QByteArray key(reinterpret_cast<const char *>(entry.key.data()),
+                         entry.key.size());
+    detailedReason = tr("%1 stage, setter 0x%2, object %3: %4")
+                         .arg(entry.sourceStage)
+                         .arg(static_cast<Word>(entry.setterCommand), 4, 16,
+                              QLatin1Char('0'))
+                         .arg(QString::fromLatin1(key.toHex()))
+                         .arg(reason);
+  }
+  emit writeFailed(detailedReason, static_cast<int>(restoreCompletedCount),
+                   static_cast<int>(activeRestorePlan.entries.size()));
+}
+
+void DeviceInfo::completeRestore() {
+  if (comm->timerThread) {
+    comm->timerThread->stopTimer();
+  }
+  comm->unRegisterExclusiveHandler();
+  restoreActive = false;
+  restoreAwaitingACK = false;
+  restoreFailed = false;
+  emit writeCompleted();
+}
+
+bool DeviceInfo::deserialize(Bytes data) {
+  const RestorePlan plan = buildRestorePlan(data, tr("preset"));
+  return plan.valid && dispatchRestorePlan(plan);
 }
 
 long DeviceInfo::registerHandler(CmdEnum commandID, Handler handler) {
@@ -1410,22 +1746,6 @@ void DeviceInfo::unRegisterExclusiveHandler() {
 
   Q_ASSERT(comm);
   comm->unRegisterExclusiveHandler();
-}
-
-void DeviceInfo::writeAll() {
-
-  for (const auto& cmdData : storedCommandData) {
-    sysexMutex.lock();
-    addCommand(generate((CmdEnum)(WRITE_BIT | keyToCommandID(cmdData.first)),
-                        cmdData.second));
-    sysexMutex.unlock();
-
-  }
-
-  maxWriteItems = sysexMessages.size();
-  emit writingStarted(maxWriteItems);
-  //printf("1207\n");
-  sendNextSysex();
 }
 
 Bytes DeviceInfo::generate(CmdEnum command,

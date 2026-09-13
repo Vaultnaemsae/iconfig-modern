@@ -388,14 +388,14 @@ bool Communicator::openAllInputs() {
   try {
     unsigned int inCount = getInCount();
     for (unsigned int i = 0; i < inCount; ++i) {
-      auto pIn = auto_ptr<RtMidiIn>(new RtMidiIn());
+      std::unique_ptr<RtMidiIn> pIn(new RtMidiIn());
 
       pIn->openPort(i);
       pIn->ignoreTypes(false);
 
       pIn->setCallback(readCallback, this);
 
-      m_midiIn.push_back(pIn);
+      m_midiIn.push_back(std::move(pIn));
     }
   }
   catch (...) {
@@ -765,7 +765,7 @@ void Communicator::sendSysex(const Bytes &sysex) {
 
   //bugfxing: If send command is succeded, unlock mutex.
   //--zx,2016-06-08
-  if(bSucceded == false) {
+  if(bSucceded == true) {
     sendMutex.unlock();
   }
 #endif  // __IOS__

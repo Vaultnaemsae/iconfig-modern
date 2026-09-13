@@ -67,7 +67,7 @@ void FirmwareCheckDialog::checkChanged(bool checked) {
     else if (obj == ui->radioNever) {
       settings.setValue("frequency", 3);
     }
-    settings.setValue("lastCheck", QDateTime::currentDateTime().toTime_t());
+    settings.setValue("lastCheck", QDateTime::currentDateTime().toSecsSinceEpoch());
   }
   settings.endGroup();
 

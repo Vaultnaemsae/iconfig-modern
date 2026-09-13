@@ -68,7 +68,11 @@ AudioPatchbayForm::AudioPatchbayForm(DeviceInfoPtr _device, QWidget *_parent)
       device->registerHandler(Command::ACK, ackHandler);
 
   // connect mapper
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  connect(outputSignalMapper, SIGNAL(mappedInt(int)), this,
+#else
   connect(outputSignalMapper, SIGNAL(mapped(int)), this,
+#endif
           SLOT(outputChannelChanged(int)), Qt::QueuedConnection);
 
   // create the tree

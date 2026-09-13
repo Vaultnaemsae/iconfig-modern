@@ -23,7 +23,11 @@ AudioChannelsControlWidget::AudioChannelsControlWidget(
   setContentsMargins(0,0,0,0);
 
   signalMapper = new QSignalMapper(this);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  connect(signalMapper, SIGNAL(mappedInt(int)),
+#else
   connect(signalMapper, SIGNAL(mapped(int)),
+#endif
           this,         SLOT(linkButtonClicked(int)));
 
   //this->setStyleSheet("QGroupBox { margin-top: 40px; } ");

@@ -13,7 +13,9 @@
 #include "MIDIInfo.h"
 #include "MIDIPortInfo.h"
 
+#include <QDebug>
 #include <QLineEdit>
+#include <QSignalBlocker>
 
 #ifndef Q_MOC_RUN
 #include <boost/bind.hpp>
@@ -63,7 +65,7 @@ MIDIChannelRemapForm::MIDIChannelRemapForm(CommPtr _comm, DeviceInfoPtr _device,
 
   auto *const gridLayout = new QGridLayout(ui->portSelectionContainer);
   gridLayout->addWidget(portSelectionForm, 0, 0, 1, 1);
-  gridLayout->setMargin(0);
+  gridLayout->setContentsMargins(0, 0, 0, 0);
   gridLayout->setSpacing(0);
   gridLayout->setVerticalSpacing(0);
 
@@ -81,7 +83,7 @@ MIDIChannelRemapForm::MIDIChannelRemapForm(CommPtr _comm, DeviceInfoPtr _device,
 
   // Setup Table
   QStringList vertHeaderList;
-  vertHeaderList << tr("Remap to Channel") << tr("Pitch Bend")
+  vertHeaderList << tr("Target channel") << tr("Pitch Bend")
                  << tr("Channel Pressure") << tr("Program Change")
                  << tr("Control Change") << tr("Poly Key Pressure")
                  << tr("Note On/Off");
@@ -97,9 +99,9 @@ MIDIChannelRemapForm::MIDIChannelRemapForm(CommPtr _comm, DeviceInfoPtr _device,
   ui->tableWidget->setHorizontalHeaderLabels(horzHeaderList);
   auto *const horzHeader = ui->tableWidget->horizontalHeader();
   Q_ASSERT(horzHeader);
-  horzHeader->setResizeMode(QHeaderView::Stretch);
+  horzHeader->setSectionResizeMode(QHeaderView::Stretch);
 
-  tableListener->addCornerLabel("Channel");
+  tableListener->addCornerLabel(tr("Source channel"));
 
   // Add the labels
   for (auto row = 1; row < ui->tableWidget->rowCount(); ++row) {
@@ -116,7 +118,7 @@ MIDIChannelRemapForm::MIDIChannelRemapForm(CommPtr _comm, DeviceInfoPtr _device,
   // Add line edit
   for (auto col = 0; col < ui->tableWidget->columnCount(); ++col) {
     auto *const lineEdit = new QLineEdit();
-    lineEdit->setValidator(new QIntValidator(1, 16));
+    lineEdit->setValidator(new QIntValidator(1, 16, lineEdit));
     lineEdit->setText(QString::number(16));
 
     lineEditSignalMapper->setMapping(lineEdit, col);
@@ -125,7 +127,11 @@ MIDIChannelRemapForm::MIDIChannelRemapForm(CommPtr _comm, DeviceInfoPtr _device,
 
     ui->tableWidget->setCellWidget(0, col, lineEdit);
   }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  connect(lineEditSignalMapper, SIGNAL(mappedInt(int)), this,
+#else
   connect(lineEditSignalMapper, SIGNAL(mapped(int)), this,
+#endif
           SLOT(lineEditChanged(int)));
 
   updateChannelRemap();
@@ -148,28 +154,74 @@ void MIDIChannelRemapForm::selectedPortIDsChanged(PortIDVector) {
 
 void MIDIChannelRemapForm::updateChannelRemap() {
   const auto &portID = portSelectionForm->selectedPortID();
-  auto &remapMap = device->midiPortRemap(portID, currentRemapID());
+  const auto &remapMap = device->midiPortRemap(portID, currentRemapID());
 
   for (auto col = 0; col < ui->tableWidget->columnCount(); ++col) {
     auto *const lineEdit =
         qobject_cast<QLineEdit *>(ui->tableWidget->cellWidget(0, col));
     Q_ASSERT(lineEdit);
 
+    if (static_cast<size_t>(col) >= remapMap.numRemapStatuses()) {
+      qWarning() << "MIDI channel remap column has no corresponding device data:"
+                 << col;
+      continue;
+    }
+
     const auto &remapStatus = remapMap.remapStatus_at(col);
+    const QSignalBlocker blocker(lineEdit);
     lineEdit->setText(QString::number(remapStatus.channelNumber + 1));
   }
 
   tableListener->updateWidgets(
       bind(&MIDIChannelRemapForm::stateForCell, this, _1, _2));
+  updateColumnPresentation(remapMap);
+}
+
+void MIDIChannelRemapForm::updateColumnPresentation(
+    const MIDIPortRemap &remapMap) {
+  for (auto col = 0; col < ui->tableWidget->columnCount(); ++col) {
+    if (static_cast<size_t>(col) >= remapMap.numRemapStatuses()) {
+      continue;
+    }
+
+    const auto &remapStatus = remapMap.remapStatus_at(col);
+    bool active = false;
+    for (int row = RemapStatusRow::PitchBendEvents;
+         row <= RemapStatusRow::NoteEvents; ++row) {
+      active = active || rowToRemapStatus(remapStatus, row);
+    }
+
+    const auto explanation =
+        active
+            ? tr("Source MIDI channel %1 remaps enabled event types to MIDI "
+                 "channel %2.")
+                  .arg(col + 1)
+                  .arg(remapStatus.channelNumber + 1)
+            : tr("Inactive because no event types are enabled. Stored target "
+                 "channel: %1.")
+                  .arg(remapStatus.channelNumber + 1);
+
+    auto *const lineEdit = qobject_cast<QLineEdit *>(
+        ui->tableWidget->cellWidget(0, col));
+    if (lineEdit) {
+      lineEdit->setEnabled(active);
+      lineEdit->setToolTip(explanation);
+    }
+
+    auto *const headerItem = ui->tableWidget->horizontalHeaderItem(col);
+    if (headerItem) {
+      headerItem->setToolTip(explanation);
+    }
+  }
 }
 
 void MIDIChannelRemapForm::sendUpdate() {
   updateMutex.lock();
-  QHashIterator<RemapTypeEnum, Word> i(updateList);
+  QSetIterator<RemapUpdateKey> i(updateList);
   while (i.hasNext()) {
-    i.next();
-    const auto &remapID = i.key();
-    const auto &portID = i.value();
+    const auto update = i.next();
+    const auto &portID = update.first;
+    const auto &remapID = update.second;
     const auto &remapData = device->midiPortRemap(portID, remapID);
 
     device->send<SetMIDIPortRemapCommand>(remapData);
@@ -182,35 +234,102 @@ void MIDIChannelRemapForm::sendUpdate() {
 
 void MIDIChannelRemapForm::cellStateChange(int row, int col,
                                            BlockState::Enum state) {
+  if ((row < RemapStatusRow::PitchBendEvents) ||
+      (row > RemapStatusRow::NoteEvents) || (col < 0) ||
+      (col >= ui->tableWidget->columnCount())) {
+    qWarning() << "Ignoring invalid MIDI channel remap event cell:" << row
+               << col;
+    return;
+  }
+
   const auto &portID = portSelectionForm->selectedPortID();
   auto &remapMap = device->midiPortRemap(portID, currentRemapID());
-  auto &remapStatus = remapMap.remapStatus_at(col);
 
-  setRemapStatusBit(remapStatus, row, (state == BlockState::Full));
+  if (static_cast<size_t>(col) >= remapMap.numRemapStatuses()) {
+    qWarning() << "MIDI channel remap event column has no device data:" << col;
+    return;
+  }
+
+  auto &remapStatus = remapMap.remapStatus_at(col);
+  const auto requestedState = (state == BlockState::Full);
+
+  if (rowToRemapStatus(remapStatus, row) == requestedState) {
+    return;
+  }
+
+  setRemapStatusBit(remapStatus, row, requestedState);
+  updateColumnPresentation(remapMap);
 
   addToUpdateList(portID);
 }
 
 void MIDIChannelRemapForm::lineEditChanged(int col) {
+  if ((col < 0) || (col >= ui->tableWidget->columnCount())) {
+    qWarning() << "Ignoring invalid MIDI channel remap target column:" << col;
+    return;
+  }
+
   auto *const lineEdit =
       qobject_cast<QLineEdit *>(ui->tableWidget->cellWidget(0, col));
-  Q_ASSERT(lineEdit);
+  if (!lineEdit) {
+    qWarning() << "Missing MIDI channel remap target editor at column:" << col;
+    return;
+  }
 
   const auto &portID = portSelectionForm->selectedPortID();
   auto &remapMap = device->midiPortRemap(portID, currentRemapID());
+
+  if (static_cast<size_t>(col) >= remapMap.numRemapStatuses()) {
+    qWarning() << "MIDI channel remap target column has no device data:" << col;
+    return;
+  }
+
   auto &remapStatus = remapMap.remapStatus_at(col);
 
-  remapStatus.channelNumber = (uint16_t)(lineEdit->text().toInt() - 1) & 0x0F;
+  auto text = lineEdit->text();
+  int cursorPosition = 0;
+  const auto acceptable = lineEdit->validator() &&
+                          (lineEdit->validator()->validate(
+                               text, cursorPosition) == QValidator::Acceptable);
+  bool converted = false;
+  const auto displayedChannel = text.toInt(&converted);
+  if (!acceptable || !converted || (displayedChannel < 1) ||
+      (displayedChannel > 16)) {
+    qWarning() << "Ignoring invalid MIDI channel remap target:" << text
+               << "at source channel" << (col + 1);
+    const QSignalBlocker blocker(lineEdit);
+    lineEdit->setText(QString::number(remapStatus.channelNumber + 1));
+    return;
+  }
+
+  const auto targetChannel = static_cast<Byte>(displayedChannel - 1);
+  if (remapStatus.channelNumber == targetChannel) {
+    return;
+  }
+
+  remapStatus.channelNumber = targetChannel;
+  updateColumnPresentation(remapMap);
 
   addToUpdateList(portID);
 }
 
 BlockState::Enum MIDIChannelRemapForm::stateForCell(int row, int col) const {
+  if ((row < RemapStatusRow::PitchBendEvents) ||
+      (row > RemapStatusRow::NoteEvents) || (col < 0) ||
+      (col >= ui->tableWidget->columnCount())) {
+    return BlockState::Empty;
+  }
+
   const auto &remapID =
       (ui->remapTypeComboBox->currentIndex() == 0) ? RemapID::InputRemap
                                                    : RemapID::OutputRemap;
   const auto &portID = portSelectionForm->selectedPortID();
   const auto &remapMap = device->midiPortRemap(portID, remapID);
+
+  if (static_cast<size_t>(col) >= remapMap.numRemapStatuses()) {
+    return BlockState::Empty;
+  }
+
   const auto &remapStatus = remapMap.remapStatus_at(col);
 
   return ((rowToRemapStatus(remapStatus, row)) ? (BlockState::Full)
@@ -284,7 +403,7 @@ void MIDIChannelRemapForm::refreshWidget() {
 void MIDIChannelRemapForm::addToUpdateList(Word portID) {
   sendTimer->stop();
   updateMutex.lock();
-  updateList[currentRemapID()] = portID;
+  updateList.insert(qMakePair(portID, currentRemapID()));
   updateMutex.unlock();
   sendTimer->start(kBatchTime);
 }

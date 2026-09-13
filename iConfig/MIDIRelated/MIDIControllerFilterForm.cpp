@@ -15,7 +15,8 @@
 #include "MyComboBox.h"
 
 #include <QComboBox>
-
+#include <QDebug>
+#include <QSignalBlocker>
 #ifndef Q_MOC_RUN
 #include <boost/bind.hpp>
 #include <boost/shared_ptr.hpp>
@@ -89,7 +90,7 @@ MIDIControllerFilterForm::MIDIControllerFilterForm(CommPtr _comm,
 
   auto *const gridLayout = new QGridLayout(ui->portSelectionContainer);
   gridLayout->addWidget(portSelectionForm, 0, 0, 1, 1);
-  gridLayout->setMargin(0);
+  gridLayout->setContentsMargins(0, 0, 0, 0);
   gridLayout->setSpacing(0);
   gridLayout->setVerticalSpacing(0);
 
@@ -140,9 +141,10 @@ MIDIControllerFilterForm::MIDIControllerFilterForm(CommPtr _comm,
 
   auto *const horzHeader = ui->tableWidget->horizontalHeader();
   Q_ASSERT(horzHeader);
-  horzHeader->setResizeMode(QHeaderView::Fixed);
+  horzHeader->setSectionResizeMode(QHeaderView::Fixed);
   horzHeader->setDefaultSectionSize(25);
-  horzHeader->setResizeMode(horzHeaderList.count() - 1, QHeaderView::Stretch);
+  horzHeader->setSectionResizeMode(horzHeaderList.count() - 1,
+                                   QHeaderView::Stretch);
 
   tableListener->addCornerLabel(tr("Channel"));
 
@@ -199,9 +201,24 @@ void MIDIControllerFilterForm::updateFilters() {
         ui->tableWidget->cellWidget(row, FilterCtlrCols::ControllerID));
     Q_ASSERT(comboBox);
 
-    const auto &controllerFilter = filterData.controllerFilters().at(row);
+    const auto controllerCount = filterData.controllerFilters().size();
+    if (static_cast<size_t>(row) >= controllerCount) {
+      qWarning() << "MIDI controller filter row has no corresponding device data:"
+                 << row;
+      continue;
+    }
 
-    comboBox->setCurrentIndex(controllerFilter.controllerID);
+    const auto &controllerFilter = filterData.controllerFilter_at(row);
+    const auto controllerID = static_cast<int>(controllerFilter.controllerID);
+    const QSignalBlocker blocker(comboBox);
+
+    if (controllerID >= comboBox->count()) {
+      comboBox->setCurrentIndex(-1);
+      qWarning() << "Invalid MIDI controller filter ID from device:"
+                 << controllerID << "at row" << row;
+    } else {
+      comboBox->setCurrentIndex(controllerID);
+    }
   }
 
   tableListener->updateWidgets(
@@ -213,11 +230,13 @@ void MIDIControllerFilterForm::updateFilters() {
 ////////////////////////////////////////////////////////////////////////////////
 void MIDIControllerFilterForm::sendUpdate() {
   updateMutex.lock();
-  QHashIterator<int, FilterIDEnum> i(updateList);
+  QSetIterator<FilterUpdateKey> i(updateList);
   while (i.hasNext()) {
-    i.next();
+    const auto update = i.next();
 
-    const auto &filterData = device->midiPortFilter(i.key(), i.value());
+    const auto &filterData =
+        device->midiPortFilter(update.first, update.second);
+
     device->send<SetMIDIPortFilterCommand>(filterData);
   }
 
@@ -231,14 +250,27 @@ void MIDIControllerFilterForm::sendUpdate() {
 ////////////////////////////////////////////////////////////////////////////////
 void MIDIControllerFilterForm::cellStateChange(int row, int col,
                                                BlockState::Enum state) {
+  if ((row < 0) || (row >= ui->tableWidget->rowCount()) ||
+      (colChBitmapMap.count(col) == 0)) {
+    return;
+  }
+
   const auto &portID = portSelectionForm->selectedPortID();
   const auto &chBitmap = colChBitmapMap.at(col);
   auto &filterData = device->midiPortFilter(portID, currentFilterID());
 
-  Q_ASSERT((row >= 0) && (row < (int) filterData.controllerFilters().size()));
+  if (static_cast<size_t>(row) >= filterData.controllerFilters().size()) {
+    qWarning() << "MIDI controller filter edit row has no device data:" << row;
+    return;
+  }
 
   auto &controllerFilter = filterData.controllerFilter_at(row);
-  controllerFilter.channelBitmap.set(chBitmap, (state == BlockState::Full));
+  const auto requestedState = (state == BlockState::Full);
+  if (controllerFilter.channelBitmap[chBitmap] == requestedState) {
+    return;
+  }
+
+  controllerFilter.channelBitmap.set(chBitmap, requestedState);
 
   addToUpdateList(portID);
 }
@@ -304,7 +336,7 @@ void MIDIControllerFilterForm::addEmptyLabel(int row, int col) {
 void MIDIControllerFilterForm::addToUpdateList(Word portID) {
   sendTimer->stop();
   updateMutex.lock();
-  updateList[portID] = currentFilterID();
+  updateList.insert(qMakePair(portID, currentFilterID()));
   updateMutex.unlock();
   sendTimer->start(kBatchTime);
 }
@@ -323,11 +355,30 @@ int MIDIControllerFilterForm::controllerIndexForRow(int row,
 ////////////////////////////////////////////////////////////////////////////////
 /// this method is used to set the controller index when a combo box is selected
 ////////////////////////////////////////////////////////////////////////////////
-void MIDIControllerFilterForm::setControllerIndexForRow(int row, QComboBox *,
+void MIDIControllerFilterForm::setControllerIndexForRow(int row,
+                                                        QComboBox *comboBox,
                                                         int selection) {
+  if (!comboBox || (row < 0) || (row >= ui->tableWidget->rowCount()) ||
+      (selection < 0) || (selection >= comboBox->count())) {
+    qWarning() << "Ignoring invalid MIDI controller filter selection:"
+               << selection << "at row" << row;
+    return;
+  }
+
   const auto &portID = portSelectionForm->selectedPortID();
   auto &filterData = device->midiPortFilter(portID, currentFilterID());
+
+  if (static_cast<size_t>(row) >= filterData.controllerFilters().size()) {
+    qWarning() << "MIDI controller filter selection row has no device data:"
+               << row;
+    return;
+  }
+
   auto &controllerFilter = filterData.controllerFilter_at(row);
+  if (controllerFilter.controllerID == static_cast<Byte>(selection)) {
+    return;
+  }
+
   controllerFilter.controllerID = selection;
   addToUpdateList(portID);
 }

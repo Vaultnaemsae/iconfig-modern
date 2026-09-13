@@ -463,7 +463,7 @@ void FirmwareUpgradeDialog::parseMIDI(QByteArray midi) {
     }
     else
     {
-      QMessageBox::critical(this, tr("File Corrupt."), tr("The local firmware file, ") + m_bLocalFile + tr(", is corrupted. Please try other file."));
+      QMessageBox::critical(this, tr("File Corrupt."), tr("The local firmware file, ") + m_LocalFirmwareFile + tr(", is corrupted. Please try other file."));
     }
     close();
   } else {

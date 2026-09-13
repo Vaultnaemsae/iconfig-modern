@@ -7,31 +7,30 @@
 QT       += core gui network
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
+greaterThan(QT_MAJOR_VERSION, 5): CONFIG += c++17
+else: CONFIG += c++11
+
 TARGET = GeneSysLib
 TEMPLATE = lib
 CONFIG += staticlib
 CONFIG -= PRECOMPILED_HEADER
 
 DEFINES += BOOST_RESULT_OF_USE_DECLTYPE
-QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.6
-
-#mac: DEFINES        += __MACOSX_CORE__
+mac {
+    greaterThan(QT_MAJOR_VERSION, 5): QMAKE_MACOSX_DEPLOYMENT_TARGET = 14.0
+    else: QMAKE_MACOSX_DEPLOYMENT_TARGET = 11.0
+}
+mac: DEFINES        += __MACOSX_CORE__
 win32: DEFINES      += __WINDOWS_MM__
 win32: LIBS         += -L"C:/Program Files (x86)/Microsoft SDKs/Windows/v7.1A/Lib/" -lWinMM
-
-mac: QMAKE_CXXFLAGS = -std=c++11 -stdlib=libstdc++ -Wno-unused-parameter -mmacosx-version-min=10.6
-mac: QMAKE_LFLAGS = -std=c++11 -stdlib=libstdc++ -Wno-unused-parameter -mmacosx-version-min=10.6
-mac: QMAKE_CXXFLAGS += -isystem /opt/local/include
 
 win32: INCLUDEPATH  += C:/boost_1_57_0/
 win32: DEPENDPATH   += C:/boost_1_57_0/
 
-mac: INCLUDEPATH += /opt/local/include/
-mac: DEPENDPATH += /opt/local/include/
-
-mac: INCLUDEPATH += -isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk/usr/include/
-mac: INCLUDEPATH += -isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk/usr/include/c++/4.2.1/
-mac: DEPENDPATH += -isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk/usr/include/
+mac: isEmpty(BOOST_PREFIX): BOOST_PREFIX = $$(BOOST_PREFIX)
+mac: isEmpty(BOOST_PREFIX): error("BOOST_PREFIX must name the Boost installation prefix")
+mac: INCLUDEPATH += $$BOOST_PREFIX/include
+mac: DEPENDPATH += $$BOOST_PREFIX/include
 
 INCLUDEPATH += $$PWD/../../rtmidi-2.1.1
 DEPENDPATH += $$PWD/../../rtmidi-2.1.1

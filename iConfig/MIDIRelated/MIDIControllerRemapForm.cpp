@@ -14,7 +14,8 @@
 #include "MyAlgorithms.h"
 
 #include <QComboBox>
-
+#include <QDebug>
+#include <QSignalBlocker>
 #ifndef Q_MOC_RUN
 #include <boost/bind.hpp>
 #include <boost/shared_ptr.hpp>
@@ -78,7 +79,7 @@ MIDIControllerRemapForm::MIDIControllerRemapForm(DeviceInfoPtr _device,
 
   auto *const gridLayout = new QGridLayout(ui->portSelectionContainer);
   gridLayout->addWidget(portSelectionForm, 0, 0, 1, 1);
-  gridLayout->setMargin(0);
+  gridLayout->setContentsMargins(0, 0, 0, 0);
   gridLayout->setSpacing(0);
   gridLayout->setVerticalSpacing(0);
 
@@ -138,7 +139,7 @@ MIDIControllerRemapForm::MIDIControllerRemapForm(DeviceInfoPtr _device,
   // Setup Table
   QStringList vertHeaderList;
   for (auto i = 1; i <= maxControllers; ++i) {
-    vertHeaderList << QString("Controller Remap %1").arg(QString::number(i));
+    vertHeaderList << tr("Mapping %1").arg(QString::number(i));
   }
   ui->tableWidget->setRowCount(vertHeaderList.count());
   ui->tableWidget->setVerticalHeaderLabels(vertHeaderList);
@@ -148,16 +149,18 @@ MIDIControllerRemapForm::MIDIControllerRemapForm(DeviceInfoPtr _device,
   for (auto i = 1; i <= 16; ++i) {
     horzHeaderList << QString::number(i);
   }
-  horzHeaderList << tr("Source");
-  horzHeaderList << tr("Destination");
+  horzHeaderList << tr("Source CC");
+  horzHeaderList << tr("Destination CC");
   ui->tableWidget->setColumnCount(horzHeaderList.count());
   ui->tableWidget->setHorizontalHeaderLabels(horzHeaderList);
 
   auto *const horzHeader = ui->tableWidget->horizontalHeader();
-  horzHeader->setResizeMode(QHeaderView::Fixed);
+  horzHeader->setSectionResizeMode(QHeaderView::Fixed);
   horzHeader->setDefaultSectionSize(25);
-  horzHeader->setResizeMode(horzHeaderList.count() - 2, QHeaderView::Stretch);
-  horzHeader->setResizeMode(horzHeaderList.count() - 1, QHeaderView::Stretch);
+  horzHeader->setSectionResizeMode(horzHeaderList.count() - 2,
+                                   QHeaderView::Stretch);
+  horzHeader->setSectionResizeMode(horzHeaderList.count() - 1,
+                                   QHeaderView::Stretch);
 
   // add comboBoxes
   srcSignalMapper = new QSignalMapper(this);
@@ -170,7 +173,11 @@ MIDIControllerRemapForm::MIDIControllerRemapForm(DeviceInfoPtr _device,
     ui->tableWidget
         ->setCellWidget(row, RemapControllerColumns::Source, comboBox);
   }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  connect(srcSignalMapper, SIGNAL(mappedInt(int)), this,
+#else
   connect(srcSignalMapper, SIGNAL(mapped(int)), this,
+#endif
           SLOT(srcComboBoxChanged(int)));
 
   dstSignalMapper = new QSignalMapper(this);
@@ -183,12 +190,16 @@ MIDIControllerRemapForm::MIDIControllerRemapForm(DeviceInfoPtr _device,
     ui->tableWidget
         ->setCellWidget(row, RemapControllerColumns::Destination, comboBox);
   }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  connect(dstSignalMapper, SIGNAL(mappedInt(int)), this,
+#else
   connect(dstSignalMapper, SIGNAL(mapped(int)), this,
+#endif
           SLOT(dstComboBoxChanged(int)));
 
-  tableListener->addCornerLabel("Channel");
+  tableListener->addCornerLabel(tr("Channels"));
 
-  for (auto row = 0; row <= ui->tableWidget->rowCount(); ++row) {
+  for (auto row = 0; row < ui->tableWidget->rowCount(); ++row) {
     for (auto col = 0; col < ui->tableWidget->columnCount() - 2; ++col) {
       auto *const label = new QLabel();
       label->setScaledContents(true);
@@ -232,25 +243,95 @@ void MIDIControllerRemapForm::updateCCRemap() {
         ui->tableWidget->cellWidget(row, RemapControllerColumns::Destination));
     Q_ASSERT(dstComboBox);
 
-    const auto &remapController = remapMap.controller_at(row);
+    if (static_cast<size_t>(row) >= remapMap.numControllers()) {
+      qWarning() << "MIDI controller remap row has no corresponding device data:"
+                 << row;
+      continue;
+    }
 
-    srcComboBox->setCurrentIndex(remapController.controllerSource);
-    dstComboBox->setCurrentIndex(remapController.controllerDestination);
+    const auto &remapController = remapMap.controller_at(row);
+    const auto source = static_cast<int>(remapController.controllerSource);
+    const auto destination =
+        static_cast<int>(remapController.controllerDestination);
+    const QSignalBlocker sourceBlocker(srcComboBox);
+    const QSignalBlocker destinationBlocker(dstComboBox);
+
+    if (source >= srcComboBox->count()) {
+      srcComboBox->setCurrentIndex(-1);
+      qWarning() << "Invalid MIDI controller remap source from device:"
+                 << source << "at row" << row;
+    } else {
+      srcComboBox->setCurrentIndex(source);
+    }
+
+    if (destination >= dstComboBox->count()) {
+      dstComboBox->setCurrentIndex(-1);
+      qWarning() << "Invalid MIDI controller remap destination from device:"
+                 << destination << "at row" << row;
+    } else {
+      dstComboBox->setCurrentIndex(destination);
+    }
   }
 
   tableListener->updateWidgets(
       bind(&MIDIControllerRemapForm::stateForCell, this, _1, _2));
+  updateRowPresentation(remapMap);
+}
+
+void MIDIControllerRemapForm::updateRowPresentation(
+    const MIDIPortRemap &remapMap) {
+  for (auto row = 0; row < ui->tableWidget->rowCount(); ++row) {
+    if (static_cast<size_t>(row) >= remapMap.numControllers()) {
+      continue;
+    }
+
+    const auto &entry = remapMap.controller_at(row);
+    QStringList enabledChannels;
+    for (int col = RemapControllerColumns::Channel1;
+         col <= RemapControllerColumns::Channel16; ++col) {
+      const auto channel = colChBitmapMap.at(col);
+      if (entry.channelBitmap.test(channel)) {
+        enabledChannels << QString::number(col + 1);
+      }
+    }
+
+    const auto active = !enabledChannels.isEmpty();
+    const auto rowName = active
+                             ? tr("Mapping %1").arg(row + 1)
+                             : tr("Mapping %1 (unused)").arg(row + 1);
+    const auto explanation =
+        active
+            ? tr("Active on MIDI channel(s): %1.")
+                  .arg(enabledChannels.join(", "))
+            : tr("Unused because no MIDI channels are enabled. CC 0 remains "
+                 "a valid controller value.");
+
+    auto *const headerItem = ui->tableWidget->verticalHeaderItem(row);
+    if (headerItem) {
+      headerItem->setText(rowName);
+      headerItem->setToolTip(explanation);
+    }
+
+    for (const auto column : {RemapControllerColumns::Source,
+                              RemapControllerColumns::Destination}) {
+      auto *const comboBox = qobject_cast<QComboBox *>(
+          ui->tableWidget->cellWidget(row, column));
+      if (comboBox) {
+        comboBox->setToolTip(explanation);
+      }
+    }
+  }
 }
 
 void MIDIControllerRemapForm::sendUpdate() {
   sendTimer->stop();
 
   updateMutex.lock();
-  QHashIterator<RemapTypeEnum, Word> i(updateList);
+  QSetIterator<RemapUpdateKey> i(updateList);
   while (i.hasNext()) {
-    i.next();
-    const auto &portID = i.value();
-    const auto &remapID = i.key();
+    const auto update = i.next();
+    const auto &portID = update.first;
+    const auto &remapID = update.second;
     const auto &remapData = device->midiPortRemap(portID, remapID);
 
     device->send<SetMIDIPortRemapCommand>(remapData);
@@ -261,36 +342,98 @@ void MIDIControllerRemapForm::sendUpdate() {
 
 void MIDIControllerRemapForm::cellStateChange(int row, int col,
                                               BlockState::Enum state) {
+  if ((row < 0) || (row >= ui->tableWidget->rowCount()) ||
+      (colChBitmapMap.count(col) == 0)) {
+    return;
+  }
+
   const auto &portID = portSelectionForm->selectedPortID();
   auto &remapMap = device->midiPortRemap(portID, currentRemapID());
+
+  if (static_cast<size_t>(row) >= remapMap.numControllers()) {
+    qWarning() << "MIDI controller remap edit row has no device data:" << row;
+    return;
+  }
+
   auto &remapController = remapMap.controller_at(row);
 
-  remapController.channelBitmap[colChBitmapMap.at(col)] =
-      (state == BlockState::Full);
+  const auto channel = colChBitmapMap.at(col);
+  const auto requestedState = (state == BlockState::Full);
+  if (remapController.channelBitmap[channel] == requestedState) {
+    return;
+  }
+
+  remapController.channelBitmap[channel] = requestedState;
+  updateRowPresentation(remapMap);
   addToUpdateList(portID);
 }
 
 void MIDIControllerRemapForm::srcComboBoxChanged(int row) {
+  if ((row < 0) || (row >= ui->tableWidget->rowCount())) {
+    qWarning() << "Ignoring invalid MIDI controller remap source row:" << row;
+    return;
+  }
+
   auto *const comboBox = qobject_cast<QComboBox *>(
       ui->tableWidget->cellWidget(row, RemapControllerColumns::Source));
-  Q_ASSERT(comboBox);
+  if (!comboBox || (comboBox->currentIndex() < 0) ||
+      (comboBox->currentIndex() >= comboBox->count())) {
+    qWarning() << "Ignoring invalid MIDI controller remap source selection at row"
+               << row;
+    return;
+  }
 
   const auto &portID = portSelectionForm->selectedPortID();
   auto &remapMap = device->midiPortRemap(portID, currentRemapID());
+
+  if (static_cast<size_t>(row) >= remapMap.numControllers()) {
+    qWarning() << "MIDI controller remap source row has no device data:" << row;
+    return;
+  }
+
   auto &remapController = remapMap.controller_at(row);
+
+  if (remapController.controllerSource ==
+      static_cast<Byte>(comboBox->currentIndex())) {
+    return;
+  }
 
   remapController.controllerSource = comboBox->currentIndex();
   addToUpdateList(portID);
 }
 
 void MIDIControllerRemapForm::dstComboBoxChanged(int row) {
+  if ((row < 0) || (row >= ui->tableWidget->rowCount())) {
+    qWarning() << "Ignoring invalid MIDI controller remap destination row:"
+               << row;
+    return;
+  }
+
   auto *const comboBox = qobject_cast<QComboBox *>(
       ui->tableWidget->cellWidget(row, RemapControllerColumns::Destination));
-  Q_ASSERT(comboBox);
+  if (!comboBox || (comboBox->currentIndex() < 0) ||
+      (comboBox->currentIndex() >= comboBox->count())) {
+    qWarning()
+        << "Ignoring invalid MIDI controller remap destination selection at row"
+        << row;
+    return;
+  }
 
   const auto &portID = portSelectionForm->selectedPortID();
   auto &remapMap = device->midiPortRemap(portID, currentRemapID());
+
+  if (static_cast<size_t>(row) >= remapMap.numControllers()) {
+    qWarning() << "MIDI controller remap destination row has no device data:"
+               << row;
+    return;
+  }
+
   auto &remapController = remapMap.controller_at(row);
+
+  if (remapController.controllerDestination ==
+      static_cast<Byte>(comboBox->currentIndex())) {
+    return;
+  }
 
   remapController.controllerDestination = comboBox->currentIndex();
   addToUpdateList(portID);
@@ -327,7 +470,7 @@ void MIDIControllerRemapForm::refreshWidget() {
 void MIDIControllerRemapForm::addToUpdateList(Word portID) {
   sendTimer->stop();
   updateMutex.lock();
-  updateList[currentRemapID()] = portID;
+  updateList.insert(qMakePair(portID, currentRemapID()));
   updateMutex.unlock();
   sendTimer->start(kBatchTime);
 }

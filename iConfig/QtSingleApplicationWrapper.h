@@ -14,7 +14,6 @@ class QtSingleApplicationWrapper : public QtSingleApplication
 {
   Q_OBJECT
 public:
-  explicit QtSingleApplicationWrapper(QObject *parent = 0);
   explicit QtSingleApplicationWrapper( int & argc, char ** argv, bool GUIenabled = true );
   explicit QtSingleApplicationWrapper( const QString & appId, int & argc, char ** argv );
   bool notify(QObject *receiver, QEvent *event);

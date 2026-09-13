@@ -66,7 +66,7 @@
           <enum>Qt::StrongFocus</enum>
          </property>
          <property name="text">
-          <string>Remap Type</string>
+          <string>Remap direction at selected port</string>
          </property>
          <property name="buddy">
           <cstring>remapTypeComboBox</cstring>
@@ -92,14 +92,24 @@
          </property>
          <item>
           <property name="text">
-           <string>Input</string>
+           <string>Input (entering this port)</string>
           </property>
          </item>
          <item>
           <property name="text">
-           <string>Output</string>
+           <string>Output (leaving this port)</string>
           </property>
          </item>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="portLabel">
+         <property name="text">
+          <string>MIDI port</string>
+         </property>
+         <property name="buddy">
+          <cstring>portSelectionContainer</cstring>
+         </property>
         </widget>
        </item>
        <item>
@@ -131,10 +141,20 @@
        <item>
         <widget class="QLabel" name="label_2">
          <property name="text">
-          <string>Controller Remap</string>
+          <string>Controller mappings</string>
          </property>
          <property name="buddy">
           <cstring>tableWidget</cstring>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="mappingHelpLabel">
+         <property name="text">
+          <string>Each row maps one source CC to one destination CC on the enabled channels. A row with no enabled channels is unused; CC 0 is a valid controller.</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
          </property>
         </widget>
        </item>

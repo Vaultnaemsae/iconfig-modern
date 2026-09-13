@@ -12,6 +12,8 @@
 #include "refreshobject.h"
 #include "tablelistener.h"
 
+#include <QPair>
+#include <QSet>
 #include <QSharedPointer>
 
 namespace Ui { class MIDIPortFiltersForm; }
@@ -35,6 +37,8 @@ class MIDIPortFiltersForm : public RefreshObject {
   void refreshWidget();
 
  private:
+  typedef QPair<Word, GeneSysLib::FilterIDEnum> FilterUpdateKey;
+
   void ackCallback(GeneSysLib::CmdEnum command, GeneSysLib::DeviceID deviceID,
                    Word transID, GeneSysLib::commandData_t commandData);
   bool isCellSet(int row, int col, int portID) const;
@@ -47,7 +51,7 @@ class MIDIPortFiltersForm : public RefreshObject {
 
   MIDIPortSelectionForm *portSelectionForm;
 
-  QHash<GeneSysLib::FilterIDEnum, Word> updateList;
+  QSet<FilterUpdateKey> updateList;
 
   QMutex updateMutex;
 

@@ -15,6 +15,8 @@
 
 #include <QSignalMapper>
 #include <QSharedPointer>
+#include <QPair>
+#include <QSet>
 
 using std::map;
 
@@ -43,6 +45,8 @@ class MIDIControllerRemapForm : public RefreshObject {
   void refreshWidget();
 
  private:
+  typedef QPair<Word, GeneSysLib::RemapTypeEnum> RemapUpdateKey;
+
   void ackCallback(GeneSysLib::CmdEnum, GeneSysLib::DeviceID, Word,
                    GeneSysLib::commandData_t);
   long ackHandlerID;
@@ -50,10 +54,11 @@ class MIDIControllerRemapForm : public RefreshObject {
   BlockState::Enum stateForCell(int row, int col) const;
   GeneSysLib::RemapTypeEnum currentRemapID() const;
   void addToUpdateList(Word portID);
+  void updateRowPresentation(const GeneSysLib::MIDIPortRemap &remapMap);
 
   QTimer *sendTimer;
   QMutex updateMutex;
-  QHash<GeneSysLib::RemapTypeEnum, Word> updateList;
+  QSet<RemapUpdateKey> updateList;
 
   QSharedPointer<Ui::MIDIControllerRemapForm> ui;
   MIDIPortSelectionForm *portSelectionForm;

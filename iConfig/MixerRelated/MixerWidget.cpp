@@ -157,7 +157,7 @@ MixerWidget::MixerWidget(DeviceInfoPtr device, QWidget *parent)
 
   mixerScroll->setWidget(mixerScrollWidget);
   mixerScroll->setSizePolicy(scrollSP);
-  layout()->setMargin(0);
+  layout()->setContentsMargins(0, 0, 0, 0);
   layout()->setSpacing(0);
   this->setObjectName("mixerWidget");
   this->setStyleSheet("QWidget {color: #ffffff}");
@@ -259,7 +259,7 @@ void MixerWidget::buildMixerEditButton()
 
   QHBoxLayout *lay = new QHBoxLayout();
   QWidget *wid = new QWidget();
-  lay->addWidget(editButton); lay->setMargin(0);
+  lay->addWidget(editButton); lay->setContentsMargins(0, 0, 0, 0);
   wid->setLayout(lay); wid->setContentsMargins(0,0,10,10);
   layout()->addWidget(wid);
   layout()->setAlignment(wid, Qt::AlignRight);

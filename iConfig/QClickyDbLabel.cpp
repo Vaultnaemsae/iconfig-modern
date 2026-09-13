@@ -46,7 +46,7 @@ QClickyDbLabel::QClickyDbLabel(IQClickyDbLabelAcceptor *parent) :
   dbValue = 0;
 
   auto lay = new QHBoxLayout();
-  lay->setMargin(0);
+  lay->setContentsMargins(0, 0, 0, 0);
   lay->setContentsMargins(0,0,0,0);
   setLayout(lay);
   setContentsMargins(0,0,0,0);

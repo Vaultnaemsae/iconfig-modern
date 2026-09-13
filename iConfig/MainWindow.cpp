@@ -37,6 +37,7 @@
 #include "DeviceInfoForm.h"
 #include "DeviceInformationDialog.h"
 #include "DeviceSelectionDialog.h"
+#include "LegacyDataImport.h"
 #include "MyAlgorithms.h"
 #include "Reset.h"
 #include "ResetList.h"
@@ -44,6 +45,11 @@
 #include "Presets/ICRestoreDialog.h"
 #include "Presets/ICSaveDialog.h"
 #include "FirmwareRelated/FirmwareCheckDialog.h"
+#include "Version.h"
+
+#ifdef Q_OS_MAC
+#include "MacAppearance.h"
+#endif
 
 #ifndef Q_MOC_RUN
 #include <boost/bind.hpp>
@@ -52,19 +58,103 @@
 
 #include <QProgressBar>
 #include <QPointer>
+#include <QActionGroup>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDialogButtonBox>
+#include <QDir>
 #include <QFileDialog>
+#include <QGuiApplication>
+#include <QLabel>
+#include <QMenu>
+#include <QScreen>
 #include <QString>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QDesktopServices>
 #include <QDateTime>
 #include <QDebug>
 #include <QFileDialog>
+#include <QToolButton>
+#include <QVBoxLayout>
 
 using namespace GeneSysLib;
 using namespace MyAlgorithms;
 using namespace boost::adaptors;
 using namespace boost;
 using namespace std;
+
+namespace {
+
+const QSize kDefaultMainWindowSize(1000, 720);
+
+void populateToolBarOverflow(QToolBar* toolBar, QMenu* overflowMenu) {
+  overflowMenu->clear();
+  const QList<QAction*> actions = toolBar->actions();
+  for (QAction* action : actions) {
+    QWidget* actionWidget = toolBar->widgetForAction(action);
+    if (!actionWidget || !actionWidget->isVisible()) {
+      overflowMenu->addAction(action);
+    }
+  }
+
+  // A platform style may keep overflow widgets technically visible while
+  // placing them outside the toolbar. Never present an empty overflow.
+  if (overflowMenu->isEmpty()) {
+    overflowMenu->addActions(actions);
+  }
+}
+
+void installStableToolBarOverflow(QToolBar* toolBar) {
+  QToolButton* extensionButton =
+      toolBar->findChild<QToolButton*>("qt_toolbar_ext_button");
+  if (!extensionButton) {
+    return;
+  }
+
+  QMenu* overflowMenu = extensionButton->findChild<QMenu*>(
+      "iConfigToolBarOverflowMenu", Qt::FindDirectChildrenOnly);
+  if (!overflowMenu) {
+    overflowMenu = new QMenu(extensionButton);
+    overflowMenu->setObjectName("iConfigToolBarOverflowMenu");
+    QObject::connect(overflowMenu, &QMenu::aboutToShow, toolBar,
+                     [toolBar, overflowMenu]() {
+      populateToolBarOverflow(toolBar, overflowMenu);
+    });
+  }
+
+  // QToolButton will not open a menu that is empty before showMenu() starts.
+  // Populate once now, then refresh again in aboutToShow after future resizes.
+  populateToolBarOverflow(toolBar, overflowMenu);
+
+  // Qt's private clicked() connection expands the whole toolbar as a transient
+  // popup. That popup closes prematurely on current macOS. Keep the extension
+  // button, but give it ordinary QMenu lifetime semantics instead.
+  QObject::disconnect(extensionButton, nullptr, nullptr, nullptr);
+  extensionButton->setChecked(false);
+  extensionButton->setCheckable(false);
+  extensionButton->setMenu(overflowMenu);
+  extensionButton->setPopupMode(QToolButton::DelayedPopup);
+  QObject::connect(extensionButton, &QToolButton::clicked, extensionButton,
+                   [toolBar, extensionButton, overflowMenu]() {
+    populateToolBarOverflow(toolBar, overflowMenu);
+    const QPoint menuPosition = extensionButton->mapToGlobal(
+        QPoint(extensionButton->width() - overflowMenu->sizeHint().width(),
+               extensionButton->height()));
+    overflowMenu->popup(menuPosition);
+  });
+}
+
+void configureStableToolBarOverflow(QToolBar* toolBar) {
+  QTimer::singleShot(0, toolBar, [toolBar]() {
+    installStableToolBarOverflow(toolBar);
+  });
+  QTimer::singleShot(250, toolBar, [toolBar]() {
+    installStableToolBarOverflow(toolBar);
+  });
+}
+
+}  // namespace
 
 const int MainWindow::kButtonDisableTime = 10000;
 const int MainWindow::kShortButtonDisableTime = 330;
@@ -83,6 +173,14 @@ MainWindow::MainWindow(QWidget* parent)
     basicMode(false),
     connected(false) {
   ui->setupUi(this);
+
+  // The retired online firmware service and its automatic-check preferences
+  // are not presented as working release features. Manual local firmware
+  // loading remains available as an explicitly advanced operation.
+  ui->actionFirmwareConfig->setVisible(false);
+  ui->actionUpgrade_Firmware->setVisible(false);
+  ui->actionUpgrade_Firmware_From_Local_Drive->setText(
+      tr("Load Local Firmware File... (Advanced)"));
   //Re-factory device selection UI functions, zx, 2017-04-06
   m_FirstSelectedDevice = false;
   continuedOpeningFileName = "";
@@ -98,6 +196,46 @@ MainWindow::MainWindow(QWidget* parent)
   ui->statusBar->addPermanentWidget(progressBar, 0);
 
   createActions();
+
+#ifdef Q_OS_MAC
+  QMenu* appearanceMenu = new QMenu(tr("Appearance"), this);
+  ui->menuBar->insertMenu(ui->menuHelp->menuAction(), appearanceMenu);
+
+  QActionGroup* appearanceGroup = new QActionGroup(appearanceMenu);
+  appearanceGroup->setExclusive(true);
+
+  QSettings appearanceSettings;
+  appearanceSettings.beginGroup("appearance");
+  const MacAppearance currentAppearance = macAppearanceFromString(
+      appearanceSettings.value("mode", "light").toString());
+  appearanceSettings.endGroup();
+
+  const auto addAppearanceAction =
+      [this, appearanceMenu, appearanceGroup, currentAppearance](
+          const QString& text, MacAppearance appearance) {
+    QAction* action = appearanceMenu->addAction(text);
+    action->setCheckable(true);
+    action->setChecked(currentAppearance == appearance);
+    appearanceGroup->addAction(action);
+    connect(action, &QAction::triggered, this, [appearance]() {
+      QSettings settings;
+      settings.beginGroup("appearance");
+      const QString newMode = macAppearanceToString(appearance);
+      const QString oldMode = settings.value("mode", "light").toString();
+      if (oldMode.compare(newMode, Qt::CaseInsensitive) == 0) {
+        settings.endGroup();
+        return;
+      }
+      settings.setValue("mode", newMode);
+      settings.endGroup();
+      QCoreApplication::exit(kMacAppearanceRestartExitCode);
+    });
+  };
+
+  addAppearanceAction(tr("Light"), MacAppearance::Light);
+  addAppearanceAction(tr("Dark"), MacAppearance::Dark);
+  addAppearanceAction(tr("System"), MacAppearance::System);
+#endif
 
   // open up the selection dialog
   QTimer::singleShot(500, this, SLOT(on_actionClose_triggered()));
@@ -122,10 +260,11 @@ MainWindow::MainWindow(QWidget* parent)
     connect(comm->timerThread.get(), SIGNAL(timedOut()), this,
             SLOT(onTimeout()));
   }
-  ui->toolBar->setStyleSheet("QToolBar { border: 0px; background: #404040; color: #979797; margin: 0px; padding: 0px; spacing: 0px;} QToolButton {height: 25px; width: 128px; border: 1px solid black; border-left:0; color: #ffffff; } QToolButton:checked { color: #404040; background-color: #C2C2C2; } QToolButton:hover { color: #404040; background-color: #C2C2C2; } QToolButton:pressed { color: #404040; background-color: #C2C2C2; }");
+  ui->toolBar->setStyleSheet("QToolBar { border: 0px; background: #404040; color: #979797; margin: 0px; padding: 0px; spacing: 0px;} QToolButton {height: 25px; width: 128px; border: 1px solid black; border-left:0; color: #ffffff; } QToolButton#qt_toolbar_ext_button { width: 28px; min-width: 28px; max-width: 28px; border-left: 1px solid black; } QToolButton:checked { color: #404040; background-color: #C2C2C2; } QToolButton:hover { color: #404040; background-color: #C2C2C2; } QToolButton:pressed { color: #404040; background-color: #C2C2C2; }");
 //  ui->toolBar->setMinimumHeight(50);
   ui->toolBar->layout()->setContentsMargins(0,0,0,0);
   ui->toolBar->show();
+  configureStableToolBarOverflow(ui->toolBar);
 
   //Re-factory warning message UI, zx, 2017-04-21
   m_WarningState = WMSG_UNSPECIFIED;
@@ -214,6 +353,8 @@ void MainWindow::generateToolBar(GeneSysLib::CommandList commandList) {
     generateToolBarAudio(commandList);
     break;
   }
+
+  configureStableToolBarOverflow(ui->toolBar);
 }
 
 void MainWindow::clearToolBar() { ui->toolBar->clear(); }
@@ -243,6 +384,8 @@ void MainWindow::ReconnectPreviousOpenDevice(DeviceInfoPtr prevDevice) {
                 SLOT(writingProgress(int)));
         connect(currentDevice.get(), SIGNAL(writeCompleted()), this,
                 SLOT(writingCompleted()));
+        connect(currentDevice.get(), SIGNAL(writeFailed(QString,int,int)), this,
+                SLOT(writingFailed(QString,int,int)));
         connect(currentDevice.get(), SIGNAL(queryStarted()), progressBar,
                 SLOT(show()));
         connect(currentDevice.get(),
@@ -262,7 +405,11 @@ void MainWindow::ReconnectPreviousOpenDevice(DeviceInfoPtr prevDevice) {
            showErrorWithTitleAndMsg("Bootloader Mode Device", "Bootloader Moder device needs firmware upgrade either from iConfig or manually.", true);
            QApplication::quit();
         } else {
-          deviceInfo_triggered();
+          if (audioMixerAction) {
+            audioMixerControl_triggered();
+          } else {
+            deviceInfo_triggered();
+          }
 
           if (continuedOpeningFileName == "") {
 
@@ -359,6 +506,8 @@ void MainWindow::on_actionClose_triggered() {
                   SLOT(writingProgress(int)));
           connect(currentDevice.get(), SIGNAL(writeCompleted()), this,
                   SLOT(writingCompleted()));
+          connect(currentDevice.get(), SIGNAL(writeFailed(QString,int,int)), this,
+                  SLOT(writingFailed(QString,int,int)));
           connect(currentDevice.get(), SIGNAL(queryStarted()), progressBar,
                   SLOT(show()));
           connect(currentDevice.get(),
@@ -376,44 +525,19 @@ void MainWindow::on_actionClose_triggered() {
                     SLOT(on_actionClose_triggered()));
             firmwareDialog->showNormal();
           } else {
-            deviceInfo_triggered();
+            if (audioMixerAction) {
+              audioMixerControl_triggered();
+            } else {
+              deviceInfo_triggered();
+            }
 
             if (continuedOpeningFileName == "") {
 
               QSettings settings(QCoreApplication::organizationName(),
                                  QCoreApplication::applicationName());
 
-              //Disable AutoFirmware Update. zx, 2017-03-24
-              settings.beginGroup("firmwareCheck");
-              int freq = settings.value("frequency", 0).toInt();
-              bool doFirmwareCheck = false;
-
-              if (freq == 0) {
-                doFirmwareCheck = true;
-              }
-              else if (freq != 3) {
-                uint lastCheck = settings.value("lastCheck", QDateTime::currentDateTime().toTime_t()).toUInt();
-                uint now = QDateTime::currentDateTime().toTime_t();
-
-                if (freq == 1 && ((now - lastCheck) > (7 * 24 * 60 * 60))) {
-                  doFirmwareCheck = true;
-                }
-                else if (freq == 2 && ((now - lastCheck) > (30 * 24 * 60 * 60))) {
-                  doFirmwareCheck = true;
-                }
-              }
-              if (doFirmwareCheck) {
-                settings.setValue("lastCheck", QDateTime::currentDateTime().toTime_t());
-                QPointer<FirmwareUpgradeDialog> firmwareDialog(
-                      new FirmwareUpgradeDialog(this->comm, this->currentDevice,
-                                                FirmwareMode::CheckMode, this));
-                connect(firmwareDialog, SIGNAL(rejected()), this,
-                        SLOT(deviceInfo_triggered()));
-                connect(firmwareDialog, SIGNAL(accepted()), this,
-                        SLOT(deviceInfo_triggered()));
-                firmwareDialog->showNormal();
-              }
-              settings.endGroup();
+              // The retired online firmware service is no longer queried
+              // automatically. Manual and local-file firmware actions remain.
 
               settings.beginGroup("informationScreen");
               bool show = settings.value("show" + QString::number(currentDevice->getDeviceID().pid()), true).toBool();
@@ -631,7 +755,117 @@ void MainWindow::on_actionOpen_triggered() {
 }
 
 void MainWindow::on_actionOpenPresetsFolder_triggered() {
-  QDesktopServices::openUrl( QUrl::fromLocalFile( QDesktopServices::storageLocation(QDesktopServices::DataLocation) + "/presets" ) );
+  QDesktopServices::openUrl(QUrl::fromLocalFile(
+      QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+      "/presets"));
+}
+
+void MainWindow::on_actionImportLegacyData_triggered() {
+  const LegacyDataImport::NamespacePaths legacyPaths =
+      LegacyDataImport::legacyNamespacePaths();
+  const LegacyDataImport::NamespacePaths modernPaths =
+      LegacyDataImport::activeNamespacePaths();
+
+  QDialog dialog(this);
+  dialog.setWindowTitle(tr("Import Legacy iConfig Data"));
+  QVBoxLayout *layout = new QVBoxLayout(&dialog);
+  QLabel *description = new QLabel(
+      tr("Import copies selected legacy data into iConfig Modern. The legacy "
+         "files are opened read-only and are never changed."),
+      &dialog);
+  description->setWordWrap(true);
+  layout->addWidget(description);
+
+  QCheckBox *presets = new QCheckBox(tr("Presets for the connected device"),
+                                     &dialog);
+  const bool canImportPresets = connected && currentDevice &&
+      QDir(legacyPaths.presetDirectory).exists();
+  presets->setEnabled(canImportPresets);
+  presets->setChecked(canImportPresets);
+  if (!connected) {
+    presets->setToolTip(
+        tr("Connect and select a device so preset compatibility can be validated."));
+  }
+  layout->addWidget(presets);
+
+  QCheckBox *preferences = new QCheckBox(
+      tr("Appearance preference (Light, Dark, or System)"), &dialog);
+  preferences->setChecked(false);
+  layout->addWidget(preferences);
+
+  layout->addWidget(new QLabel(
+      tr("If a modern preset has the same name:"), &dialog));
+  QComboBox *conflict = new QComboBox(&dialog);
+  conflict->addItem(tr("Skip (recommended)"),
+                    static_cast<int>(LegacyDataImport::ConflictPolicy::Skip));
+  conflict->addItem(tr("Rename imported copy"),
+                    static_cast<int>(LegacyDataImport::ConflictPolicy::Rename));
+  conflict->addItem(tr("Replace modern copy"),
+                    static_cast<int>(LegacyDataImport::ConflictPolicy::Replace));
+  layout->addWidget(conflict);
+
+  QLabel *source = new QLabel(
+      tr("Legacy source:\n%1").arg(legacyPaths.appDataDirectory), &dialog);
+  source->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  layout->addWidget(source);
+
+  QDialogButtonBox *buttons = new QDialogButtonBox(
+      QDialogButtonBox::Cancel | QDialogButtonBox::Ok, &dialog);
+  connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+  layout->addWidget(buttons);
+
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+  if (!presets->isChecked() && !preferences->isChecked()) {
+    QMessageBox::information(this, tr("Import Legacy iConfig Data"),
+                             tr("No data was selected."));
+    return;
+  }
+
+  QStringList summary;
+  if (presets->isChecked()) {
+    const auto validator = [this](const QByteArray &contents, QString *error) {
+      const Bytes data(contents.begin(), contents.end());
+      const DeviceInfo::RestorePlan plan =
+          currentDevice->buildRestorePlan(data, tr("legacy import validation"));
+      if (!plan.valid && error) {
+        *error = plan.error;
+      }
+      return plan.valid;
+    };
+    const auto policy = static_cast<LegacyDataImport::ConflictPolicy>(
+        conflict->currentData().toInt());
+    const LegacyDataImport::PresetImportResult result =
+        LegacyDataImport::importPresets(
+            legacyPaths.presetDirectory, modernPaths.presetDirectory,
+            extensionForPID(currentDevice->getPID()),
+            static_cast<quint8>(currentDevice->getPID()), policy, validator);
+    summary << tr("Presets imported: %1 (%2 files)\n"
+                  "Presets skipped: %3\nPresets rejected: %4")
+                   .arg(result.importedPresets)
+                   .arg(result.importedFiles)
+                   .arg(result.skippedPresets)
+                   .arg(result.rejectedPresets);
+    summary << result.messages;
+  }
+
+  if (preferences->isChecked()) {
+    QSettings legacySettings(QSettings::NativeFormat, QSettings::UserScope,
+                             QStringLiteral("iConnectivity"),
+                             QStringLiteral("iConnectivity iConfig"));
+    QSettings modernSettings;
+    const auto result = LegacyDataImport::importWhitelistedPreferences(
+        legacySettings, modernSettings);
+    summary << tr("Preferences imported: %1\nPreferences rejected: %2")
+                   .arg(result.importedKeys)
+                   .arg(result.rejectedKeys);
+    summary << result.messages;
+  }
+
+  QMessageBox::information(this, tr("Import Legacy iConfig Data"),
+                           summary.join(QStringLiteral("\n")));
 }
 
 void MainWindow::clearLayout(QLayout* layout)
@@ -803,6 +1037,9 @@ void MainWindow::audioPatchbay_triggered() {
 
 void MainWindow::audioMixerControl_triggered() {
   if (ensureAudioInfoSave()) {
+    if (audioMixerAction) {
+      audioMixerAction->setChecked(true);
+    }
     clearLayout(ui->centralWidget->layout());
 
 
@@ -933,6 +1170,7 @@ void MainWindow::queryCompleted(Screen screen, CommandQList) {
 
     case OpenScreen: {
       if ((currentDevice) || (!connected)) {
+        bool restoringAuxiliary = false;
         clearLayout(ui->centralWidget->layout());
         DeviceInfoForm* devInfoForm = new DeviceInfoForm(currentDevice);
 
@@ -950,6 +1188,7 @@ void MainWindow::queryCompleted(Screen screen, CommandQList) {
           fileName = continuedOpeningFileName;
           continuedOpeningFileName = "";
           rebootMe = false;
+          restoringAuxiliary = true;
         }
         else {
           //Bugfixing, zx-03-27
@@ -975,9 +1214,9 @@ void MainWindow::queryCompleted(Screen screen, CommandQList) {
           //Bugfixing, zx-03-27
           qDebug() << "Preset file to open:" << continuedOpeningFileName;
 
-          if (!file.open(QFile::ReadWrite)) {
+          if (!file.open(QFile::ReadOnly)) {
             QMessageBox::warning(this, tr("Open Failed"),
-                                 tr("Cannot write file %1:\n%2.").arg(fileName)
+                                 tr("Cannot read file %1:\n%2.").arg(fileName)
                                  .arg(file.errorString()));
             return;
           }
@@ -988,40 +1227,70 @@ void MainWindow::queryCompleted(Screen screen, CommandQList) {
           Bytes data = Bytes(qData.begin(), qData.end());
 
           ui->statusBar->showMessage(tr("Opening file..."), 3000);
-          Bytes preData = currentDevice->serialize2(getPreRebootCommands(), "");
-          if (!currentDevice->deserialize(data)) {
+          const DeviceInfo::RestorePlan restorePlan =
+              currentDevice->buildRestorePlan(
+                  data, restoringAuxiliary ? tr("auxiliary") : tr("primary"));
+          if (!restorePlan.valid) {
+            continuedOpeningFileName.clear();
+            rebootMe = false;
             ui->statusBar->showMessage(tr("File read error."), 3000);
             QMessageBox msgBox;
             msgBox.setText(tr("Could not read file"));
-            msgBox.setInformativeText(tr(
-                                        "The file was corrupted or was from another application version."));
+            msgBox.setInformativeText(restorePlan.error);
             msgBox.setStandardButtons(QMessageBox::Ok);
             msgBox.setIcon(QMessageBox::Critical);
 
             msgBox.exec();
           }
-          else {
-            if (continuedOpeningFileName != "") {
-              Bytes postData = currentDevice->serialize2(getPreRebootCommands(), "");
-
-              for( Bytes::const_iterator i = preData.begin(); i != preData.end(); ++i)
-                  std::cout << std::hex << (int)*i << ' ';
-              std::cout << "\n\n";
-
-              for( Bytes::const_iterator i = postData.begin(); i != postData.end(); ++i)
-                  std::cout << std::hex << (int)*i << ' ';
-              std::cout << '\n';
-
-              if (preData == postData) {
-                printf("setting rebootMe to false!\n");
-                rebootMe = false;
-                CommandQList query;
-                currentDevice->startQuery(OpenScreen, query);
-              }
-            }
+          else if (restorePlan.entries.empty()) {
+            continuedOpeningFileName.clear();
+            rebootMe = false;
+            ui->statusBar->showMessage(
+                tr("Preset contains no restorable configuration."), 3000);
+            QMessageBox::information(
+                this, tr("Nothing to Restore"),
+                tr("The preset contains no writable configuration records. "
+                   "No device changes were started."));
           }
-
-          ui->statusBar->showMessage(tr("File opened, please wait"), 2000);
+          else if (!restoringAuxiliary &&
+                   QMessageBox::warning(
+                       this, tr("Experimental Preset Restore"),
+                       tr("Preset Restore is experimental in this "
+                          "community-maintained beta. It may change many "
+                          "device settings and can continue through an "
+                          "auxiliary stage. Back up the current configuration "
+                          "and use only a preset intended for this device.\n\n"
+                          "This stage contains %1 validated configuration "
+                          "writes. Continue?")
+                           .arg(restorePlan.entries.size()),
+                       QMessageBox::Yes | QMessageBox::Cancel,
+                       QMessageBox::Cancel) != QMessageBox::Yes) {
+            continuedOpeningFileName.clear();
+            rebootMe = false;
+            ui->statusBar->showMessage(tr("Preset restore cancelled."), 3000);
+          }
+          else if (!currentDevice->dispatchRestorePlan(restorePlan)) {
+            continuedOpeningFileName.clear();
+            rebootMe = false;
+            ui->statusBar->showMessage(tr("Preset restore could not start."),
+                                       3000);
+            QMessageBox::critical(
+                this, tr("Restore Failed"),
+                tr("The device is busy or another restore is already active."));
+          } else {
+            qDebug() << "Restore plan stage:" << restorePlan.sourceStage
+                     << "validated:" << restorePlan.validatedRecordCount
+                     << "writable:" << restorePlan.entries.size()
+                     << "not restorable:"
+                     << restorePlan.rejectedRecords.size();
+            if (!restorePlan.rejectedRecords.empty()) {
+              ui->statusBar->showMessage(
+                  tr("Opening preset (%1 read-only records skipped)...")
+                      .arg(restorePlan.rejectedRecords.size()),
+                  3000);
+            }
+            ui->statusBar->showMessage(tr("File opened, please wait"), 2000);
+          }
 
         }
         m_WarningState = WMSG_UNSPECIFIED;//zx, 2017-04-26
@@ -1309,7 +1578,7 @@ void MainWindow::createActions() {
     midiInfoAction->setCheckable(true);
     anActionGroup->addAction(midiInfoAction);
     midiInfoAction->setStatusTip(tr(
-                                   "Get/Set the midi information for the current iConnectivity device."));
+                                   "Get/Set the MIDI information for the current iConnectivity device."));
     connect(midiInfoAction, SIGNAL(triggered()), this,
             SLOT(midiInfo_triggered()), Qt::QueuedConnection);
 
@@ -1430,6 +1699,26 @@ void MainWindow::writingCompleted() {
 
     deviceInfo_triggered();
   }
+}
+
+void MainWindow::writingFailed(QString reason, int completed, int total) {
+  continuedOpeningFileName.clear();
+  rebootMe = false;
+  if (progressDialog) {
+    progressDialog->hide();
+  }
+  ui->statusBar->showMessage(tr("Preset restore stopped after %1 of %2 writes.")
+                                 .arg(completed)
+                                 .arg(total),
+                             5000);
+  QMessageBox::critical(
+      this, tr("Restore Failed"),
+      tr("The restore stopped after %1 of %2 acknowledged writes.\n\n%3\n\n"
+         "No Save to Flash or reset operation was started.")
+          .arg(completed)
+          .arg(total)
+          .arg(reason));
+  deviceInfo_triggered();
 }
 
 void MainWindow::showConnectionError() {
@@ -1574,6 +1863,9 @@ void MainWindow::on_actionReread_Settings_triggered() {
 }
 
 void MainWindow::onTimeout() {
+  if (currentDevice && currentDevice->restoreFailureRecorded()) {
+    return;
+  }
   if (connected) {
     showConnectionError();
     m_WarningState = WMSG_UNSPECIFIED; //zx. 2017-04-26
@@ -1591,7 +1883,7 @@ void MainWindow::writeSettings() {
                      QCoreApplication::applicationName());
 
   settings.beginGroup("mainwindow");
-  settings.setValue("geometry", saveGeometry());
+  settings.setValue("geometry-v2", saveGeometry());
   settings.setValue("windowstate", saveState());
   settings.endGroup();
 }
@@ -1601,22 +1893,34 @@ void MainWindow::readSettings() {
                      QCoreApplication::applicationName());
 
   settings.beginGroup("mainwindow");
-  restoreGeometry(settings.value("geometry").toByteArray());
+  const QByteArray geometry = settings.value("geometry-v2").toByteArray();
+  if (!geometry.isEmpty()) {
+    restoreGeometry(geometry);
+  } else {
+    QSize initialSize = kDefaultMainWindowSize;
+    if (QScreen* screen = QGuiApplication::primaryScreen()) {
+      initialSize = initialSize.boundedTo(screen->availableGeometry().size());
+    }
+    resize(initialSize);
+  }
   restoreState(settings.value("windowstate").toByteArray());
   settings.endGroup();
 }
 
 void MainWindow::on_actionAbout_triggered() {
   QString aboutString =
-      "<H1>" + QCoreApplication::applicationName() + "</H1>" +
+      QStringLiteral("<H1>iConfig Modern</H1>") +
       "<center>"
       "<table>"
       "<tr>"
       "   <th>Version:" + QCoreApplication::applicationVersion() +
       "</th>"
       "</tr>"
+      "<tr><th>Based on iConnectivity iConfig " ICONFIG_BASE_VERSION "</th></tr>"
       "<tr/><tr>"
-      "<th>Copyright &#169;, iKingdom Corp. 2017</th>"
+      "<th>Original software copyright &#169; iKingdom Corp. 2017</th>"
+      "<tr><th>Community-maintained by Vaultnaemsae Software</th></tr>"
+      "<tr><td>This is not an official current iConnectivity product.</td></tr>"
       "</table>"
       "</center>";
 
@@ -1666,10 +1970,9 @@ void MainWindow::on_actionSoftware_Manual_triggered() {
   if (currentDevice) {
     const auto& deviceID = currentDevice->getDeviceID();
 
-    QString formattedString;
-    formattedString.sprintf(
-          "https://support.iconnectivity.com/support/iconfig/%04d/macPC/",
-          deviceID.pid());
+    const QString formattedString = QString::asprintf(
+        "https://support.iconnectivity.com/support/iconfig/%04d/macPC/",
+        deviceID.pid());
     QDesktopServices::openUrl(QUrl(formattedString));
   }
 }
@@ -1691,7 +1994,7 @@ void MainWindow::on_actionUpgrade_Firmware_triggered() {
 //zx, 2017-05-05
 void MainWindow::on_actionUpgrade_Firmware_From_Local_Drive_triggered()
 {
-  QString filename = QFileDialog::getOpenFileName(this, tr("Load Firmware File"), "", tr("Midi Files (*.mid)"));
+  QString filename = QFileDialog::getOpenFileName(this, tr("Load Firmware File"), "", tr("MIDI Files (*.mid)"));
   if(!filename.isEmpty())
   {
      QPointer<FirmwareUpgradeDialog> firmwareDialog(new FirmwareUpgradeDialog(this->comm, this->currentDevice, filename, this));

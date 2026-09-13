@@ -8,10 +8,17 @@ QT       += core gui
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
-QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.6
+greaterThan(QT_MAJOR_VERSION, 5): CONFIG += c++17
+else: CONFIG += c++11
+mac {
+    greaterThan(QT_MAJOR_VERSION, 5): QMAKE_MACOSX_DEPLOYMENT_TARGET = 14.0
+    else: QMAKE_MACOSX_DEPLOYMENT_TARGET = 11.0
+}
 
 TARGET = "iConnectivity iConfig"
 TEMPLATE = app
+VERSION = 0.1.0
+mac: QMAKE_TARGET_BUNDLE_PREFIX = com.vaultnaemsae
 include(./qtsinglapplication/qtsingleapplication.pri)
 
 
@@ -40,6 +47,7 @@ SOURCES +=                                                        \
     ./DeviceInfoForm.cpp                                          \
     ./DeviceRebooter.cpp                                          \
     ./DeviceSelectionDialog.cpp                                   \
+    ./LegacyDataImport.cpp                                       \
     ./Main.cpp                                                    \
     ./MainWindow.cpp                                              \
     ./MySleep.cpp                                                 \
@@ -81,6 +89,8 @@ SOURCES +=                                                        \
     Presets/ICRestoreDialog.cpp \
     FirmwareRelated/FirmwareCheckDialog.cpp
 
+macx: OBJECTIVE_SOURCES += ./MacAppearance.mm
+
 HEADERS +=                                                        \
 #    ../rtmidi-2.0.1/RtError.h                                     \
 #    ../rtmidi-2.0.1/RtMidi.h                                      \
@@ -102,7 +112,10 @@ HEADERS +=                                                        \
     ./DeviceInfoForm.h                                            \
     ./DeviceRebooter.h                                            \
     ./DeviceSelectionDialog.h                                     \
+    ./LegacyDataImport.h                                         \
+    ./MacAppearance.h                                             \
     ./MainWindow.h                                                \
+    ./Version.h                                                   \
     ./MySleep.h                                                   \
     ./PortIDVector.h                                              \
     ./RefreshObject.h                                             \
@@ -174,7 +187,7 @@ win32: QMAKE_LFLAGS += /STACK:32000000
 
 DEFINES += BOOST_RESULT_OF_USE_DECLTYPE
 
-#mac: DEFINES        += __MACOSX_CORE__
+mac: DEFINES        += __MACOSX_CORE__
 win32: DEFINES      += __WINDOWS_MM__
 win32: DEFINES      += __RTMIDI_DEBUG__
 win32: LIBS         += -L"C:/Program Files (x86)/Microsoft SDKs/Windows/v7.1A/Lib/" -L"C:/Program Files (x86)/Microsoft Visual C++ Compiler Nov 2013 CTP/lib" -lWinMM
@@ -184,13 +197,10 @@ win32: LIBS         += -L"C:/Program Files (x86)/Microsoft SDKs/Windows/v7.1A/Li
 
 
 
-mac: QMAKE_CXXFLAGS = -std=c++11 -stdlib=libstdc++ -Wno-unused-parameter -Wno-deprecated-register -O2 -mmacosx-version-min=10.6
-mac: QMAKE_LFLAGS = -std=c++11 -stdlib=libstdc++ -Wno-unused-parameter -Wno-deprecated-register -O2 -mmacosx-version-min=10.6
-mac: QMAKE_CXXFLAGS += -isystem /opt/local/include
-
 mac: LIBS           += -framework CoreMIDI
 mac: LIBS           += -framework CoreFoundation
 mac: LIBS           += -framework CoreAudio
+mac: LIBS           += -framework AppKit
 
 mac: DEPENDPATH     += $$PWD/../../rtmidi-2.1.1
 mac: INCLUDEPATH    += $$PWD/../../rtmidi-2.1.1
@@ -241,11 +251,10 @@ OTHER_FILES +=                                                  \
 win32: INCLUDEPATH  += C:/boost_1_57_0/
 win32: DEPENDPATH   += C:/boost_1_57_0/
 
-mac: INCLUDEPATH += /opt/local/include/
-mac: DEPENDPATH += /opt/local/include/
-mac: INCLUDEPATH += -isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk/usr/include/
-mac: INCLUDEPATH += -isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk/usr/include/c++/4.2.1/
-mac: DEPENDPATH += -isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk/usr/include/
+mac: isEmpty(BOOST_PREFIX): BOOST_PREFIX = $$(BOOST_PREFIX)
+mac: isEmpty(BOOST_PREFIX): error("BOOST_PREFIX must name the Boost installation prefix")
+mac: INCLUDEPATH += $$BOOST_PREFIX/include
+mac: DEPENDPATH += $$BOOST_PREFIX/include
 
 ICON = ./Icon.icns
 win32: RC_FILE += iconResource.rc
@@ -254,18 +263,18 @@ win32: LIBS += -LC:/boost_1_57_0/lib32-msvc-12.0/
 
 win32:CONFIG(release, debug|release): LIBS += -L$$PWD/../GeneSysLib/build-GeneSysLib-Desktop-Release/release/ -lGeneSysLib
 else:win32:CONFIG(debug, debug|release): LIBS += -L$$PWD/../GeneSysLib/build-GeneSysLib-Desktop-Debug/debug/ -lGeneSysLib
-else:macx: LIBS += -L$$PWD/../Software/GeneSysLib/build-GeneSysLib-Default-Release/ -lGeneSysLib
+else:macx {
+    isEmpty(GENESYSLIB_BUILD_DIR): GENESYSLIB_BUILD_DIR = $$clean_path($$OUT_PWD/../genesyslib)
+    LIBS += -L$$GENESYSLIB_BUILD_DIR -lGeneSysLib
+}
 
 INCLUDEPATH += $$PWD/../GeneSysLib/build-GeneSysLib-Desktop-Release
 DEPENDPATH += $$PWD/../GeneSysLib/build-GeneSysLib-Desktop-Release
-mac:INCLUDEPATH += $$PWD/../Software/GeneSysLib/build-GeneSysLib-Desktop-Release
-mac:DEPENDPATH += $$PWD/../Software/GeneSysLib/build-GeneSysLib-Desktop-Release
 win32-g++:CONFIG(release, debug|release): PRE_TARGETDEPS += $$PWD/../GeneSysLib/build-GeneSysLib-Default-Release/libGeneSysLib.a
 else:win32-g++:CONFIG(debug, debug|release): PRE_TARGETDEPS += $$PWD/../GeneSysLib/build-GeneSysLib-Default-Debug/libGeneSysLib.a
 else:win32:!win32-g++:CONFIG(release, debug|release): PRE_TARGETDEPS += $$PWD/../GeneSysLib/build-GeneSysLib-Desktop-Release/release/GeneSysLib.lib
 else:win32:!win32-g++:CONFIG(debug, debug|release): PRE_TARGETDEPS += $$PWD/../GeneSysLib/build-GeneSysLib-Desktop-Debug/debug/GeneSysLib.lib
-else:macx: PRE_TARGETDEPS += $$PWD/../Software/GeneSysLib/build-GeneSysLib-Default-Release/libGeneSysLib.a
+else:macx: PRE_TARGETDEPS += $$GENESYSLIB_BUILD_DIR/libGeneSysLib.a
 
 DISTFILES += \
     Images/block_pa12device.png
-

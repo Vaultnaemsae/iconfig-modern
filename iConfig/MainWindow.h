@@ -52,6 +52,7 @@ private slots:
   void on_actionOpen_triggered();
   void on_actionFirmwareConfig_triggered();
   void on_actionOpenPresetsFolder_triggered();
+  void on_actionImportLegacyData_triggered();
   void on_actionReread_Settings_triggered();
 
   void deviceInfo_triggered();
@@ -90,6 +91,7 @@ private slots:
   void writingStarted(int max);
   void writingProgress(int value);
   void writingCompleted();
+  void writingFailed(QString reason, int completed, int total);
 
   void onTimeout();
 

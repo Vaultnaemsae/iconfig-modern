@@ -22,6 +22,7 @@
 #include "SysexCommand.h"
 #include "USBHostMIDIDeviceDetail.h"
 #include <QMutex>
+#include <QString>
 
 #ifndef Q_MOC_RUN
 #include <boost/algorithm/cxx11/any_of.hpp>
@@ -40,6 +41,36 @@ extern QMutex sysexMutex;
 class DeviceInfo : public QObject {
   Q_OBJECT
  public:
+  struct RestorePlanEntry {
+    RestorePlanEntry();
+
+    QString sourceStage;
+    GeneSysLib::CmdEnum returnCommand;
+    GeneSysLib::CmdEnum setterCommand;
+    commandDataKey_t key;
+    commandData_t data;
+    Bytes sysex;
+  };
+
+  struct RestoreRejectedRecord {
+    RestoreRejectedRecord();
+
+    QString sourceStage;
+    GeneSysLib::CmdEnum returnCommand;
+    QString reason;
+  };
+
+  struct RestorePlan {
+    RestorePlan();
+
+    bool valid;
+    QString error;
+    QString sourceStage;
+    int validatedRecordCount;
+    std::vector<RestorePlanEntry> entries;
+    std::vector<RestoreRejectedRecord> rejectedRecords;
+  };
+
   explicit DeviceInfo(CommPtr comm, QObject *parent = 0);
   explicit DeviceInfo(CommPtr comm, DeviceID deviceID, Word transID = 0x00,
                       QObject *parent = 0);
@@ -207,6 +238,12 @@ class DeviceInfo : public QObject {
   Bytes serialize();
   bool deserialize(Bytes data);
 
+  RestorePlan buildRestorePlan(const Bytes &data,
+                               const QString &sourceStage) const;
+  bool dispatchRestorePlan(const RestorePlan &plan);
+  bool restoreInProgress() const;
+  bool restoreFailureRecorded() const;
+
   Bytes serialize2(std::set<GeneSysLib::Command::Enum> commandsToSave, QString description = "");
   Bytes serialize2midi(std::set<GeneSysLib::Command::Enum> commandsToSave, bool reboot);
   bool deserialize2(Bytes data);
@@ -229,6 +266,7 @@ signals:
   void writingStarted(int max);
   void writingProgress(int value);
   void writeCompleted();
+  void writeFailed(QString reason, int completed, int total);
 
   void sendStart(int msec);
   void sendStop();
@@ -262,8 +300,6 @@ signals:
 //    sysexMutex.unlock();
   }
 
-  void writeAll();
-
   bool commonHandleCode(DeviceID deviceID, Word transID);
 
   void handleCommandData(GeneSysLib::CmdEnum command, DeviceID deviceID,
@@ -273,6 +309,14 @@ signals:
                                          commandData_t commandData);
   void handleACKData(GeneSysLib::CmdEnum command, DeviceID deviceID,
                      Word transID, commandData_t commandData);
+
+  static bool knownPresetReturnCommand(GeneSysLib::CmdEnum returnCommand);
+  static bool restoreSetterForReturn(GeneSysLib::CmdEnum returnCommand,
+                                     GeneSysLib::CmdEnum *setterCommand,
+                                     QString *rejectionReason);
+  void sendCurrentRestoreEntry();
+  void failRestore(const QString &reason);
+  void completeRestore();
 
   void addQuerySysex(GeneSysLib::CmdEnum command);
 
@@ -294,6 +338,13 @@ signals:
   std::queue<Bytes> sysexMessages;
   std::set<GeneSysLib::CmdEnum> attemptedQueries;
   CommPtr comm;
+
+  RestorePlan activeRestorePlan;
+  size_t restoreEntryIndex;
+  size_t restoreCompletedCount;
+  bool restoreActive;
+  bool restoreAwaitingACK;
+  bool restoreFailed;
 };
 
 typedef boost::shared_ptr<DeviceInfo> DeviceInfoPtr;

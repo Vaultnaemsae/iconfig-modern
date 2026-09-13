@@ -16,6 +16,8 @@
 
 #include <QMutex>
 #include <QComboBox>
+#include <QPair>
+#include <QSet>
 #include <QSharedPointer>
 #include <QTimer>
 
@@ -39,6 +41,8 @@ slots:
   void refreshWidget();
 
  private:
+  typedef QPair<Word, GeneSysLib::FilterIDEnum> FilterUpdateKey;
+
   void addCCComboBox(int row);
   void addEmptyLabel(int row, int col);
   BlockState::Enum stateForCell(int row, int col) const;
@@ -51,7 +55,7 @@ slots:
   GeneSysLib::CommPtr comm;
   DeviceInfoPtr device;
   MIDIPortSelectionForm *portSelectionForm;
-  QHash<int, GeneSysLib::FilterIDEnum> updateList;
+  QSet<FilterUpdateKey> updateList;
   QMutex updateMutex;
   QTimer *sendTimer;
   TableListener *tableListener;

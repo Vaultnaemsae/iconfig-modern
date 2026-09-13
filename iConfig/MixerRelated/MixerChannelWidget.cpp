@@ -432,7 +432,7 @@ void MixerChannelWidget::buildChannelNameLabel()
 
     QHBoxLayout *lay = new QHBoxLayout();
     QWidget *wid = new QWidget();
-    lay->addWidget(outputConfigPushButton); lay->setMargin(0);
+    lay->addWidget(outputConfigPushButton); lay->setContentsMargins(0, 0, 0, 0);
     wid->setLayout(lay); wid->setContentsMargins(0,0,0,0);
     layout()->addWidget(wid);
     layout()->setAlignment(wid, Qt::AlignCenter);
@@ -520,7 +520,7 @@ void MixerChannelWidget::buildChannelNameLabel()
 
     QHBoxLayout *lay = new QHBoxLayout();
     QWidget *wid = new QWidget();
-    lay->addWidget(outputConfigPushButton); lay->setMargin(0);
+    lay->addWidget(outputConfigPushButton); lay->setContentsMargins(0, 0, 0, 0);
     wid->setLayout(lay); wid->setContentsMargins(0,0,0,0);
     layout()->addWidget(wid);
     layout()->setAlignment(wid, Qt::AlignCenter);
@@ -918,7 +918,7 @@ void MixerChannelWidget::buildPanDial()
 
     QHBoxLayout *lay = new QHBoxLayout();
     QWidget *wid = new QWidget();
-    lay->addWidget(panLabelButton); lay->setMargin(0);
+    lay->addWidget(panLabelButton); lay->setContentsMargins(0, 0, 0, 0);
     wid->setLayout(lay); wid->setContentsMargins(0,0,0,0);
     layout()->addWidget(wid);
     layout()->setAlignment(wid, Qt::AlignRight);
@@ -1012,7 +1012,7 @@ void MixerChannelWidget::buildSoloDial()
 
     QHBoxLayout *lay = new QHBoxLayout();
     QWidget *wid = new QWidget();
-    lay->addWidget(soloLightPushButton); lay->setMargin(0);
+    lay->addWidget(soloLightPushButton); lay->setContentsMargins(0, 0, 0, 0);
     wid->setLayout(lay); wid->setContentsMargins(0,0,0,0);
     layout()->addWidget(wid);
     layout()->setAlignment(wid, Qt::AlignRight);
@@ -1096,7 +1096,7 @@ void MixerChannelWidget::buildMutePushButton()
 
     QHBoxLayout *lay = new QHBoxLayout();
     QWidget *wid = new QWidget();
-    lay->addWidget(mutePushButton); lay->setMargin(0);
+    lay->addWidget(mutePushButton); lay->setContentsMargins(0, 0, 0, 0);
     wid->setLayout(lay); wid->setContentsMargins(0,0,0,0);
     layout()->addWidget(wid);
     layout()->setAlignment(wid, Qt::AlignCenter);
@@ -1144,7 +1144,7 @@ void MixerChannelWidget::buildSoloPushButton()
 
     QHBoxLayout *lay = new QHBoxLayout();
     QWidget *wid = new QWidget();
-    lay->addWidget(soloPushButton); lay->setMargin(0);
+    lay->addWidget(soloPushButton); lay->setContentsMargins(0, 0, 0, 0);
     wid->setLayout(lay); wid->setContentsMargins(0,0,0,0);
     layout()->addWidget(wid);
     layout()->setAlignment(wid, Qt::AlignCenter);
@@ -1192,7 +1192,7 @@ void MixerChannelWidget::buildSoloPFLPushButton()
 
     QHBoxLayout *lay = new QHBoxLayout();
     QWidget *wid = new QWidget();
-    lay->addWidget(soloPFLPushButton); lay->setMargin(0);
+    lay->addWidget(soloPFLPushButton); lay->setContentsMargins(0, 0, 0, 0);
     wid->setLayout(lay); wid->setContentsMargins(0,0,0,0);
     layout()->addWidget(wid);
     layout()->setAlignment(wid, Qt::AlignCenter);
@@ -1243,7 +1243,7 @@ void MixerChannelWidget::buildInvertPushButton()
 
     QHBoxLayout *lay = new QHBoxLayout();
     QWidget *wid = new QWidget();
-    lay->addWidget(invertPushButton); lay->setMargin(0);
+    lay->addWidget(invertPushButton); lay->setContentsMargins(0, 0, 0, 0);
     wid->setLayout(lay); wid->setContentsMargins(0,0,0,0);
     layout()->addWidget(wid);
     layout()->setAlignment(wid, Qt::AlignCenter);
@@ -1298,14 +1298,14 @@ void MixerChannelWidget::buildRightInvertPushButton()
 
     QHBoxLayout *lay = new QHBoxLayout();
     QWidget *wid = new QWidget();
-    lay->addWidget(rightInvertPushButton); lay->setMargin(0);
+    lay->addWidget(rightInvertPushButton); lay->setContentsMargins(0, 0, 0, 0);
     wid->setLayout(lay); wid->setContentsMargins(0,0,0,0);
     layout()->addWidget(wid);
     layout()->setAlignment(wid, Qt::AlignCenter);
 
     invertBoxLayout->addWidget(wid);
 
-    invertBoxLayout->setMargin(0);
+    invertBoxLayout->setContentsMargins(0, 0, 0, 0);
     invertBox->setLayout(invertBoxLayout);
 
     rightInvertPushButton->setCheckable(true);
