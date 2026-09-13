@@ -77,5 +77,3 @@ Vaultnaemsae maintains this compatibility fork as a legacy/community project.
 Support and release language should use the umbrella description:
 
 > Community-maintained tools for legacy music hardware.
-
-Keep iConfig Modern and LF+ in separate repositories and separate releases.
