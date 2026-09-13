@@ -17,14 +17,12 @@ preset paths may be supplied directly to `restore_planner_test` for the optional
 known-file compatibility audit; user presets are never included in the source
 tree.
 
-The pre-consolidation Qt 6 baseline passed 1362/1362 assertions. The public,
-self-contained suite now passes 1384/1384 assertions: 496 controller-remap, 740
+The self-contained suite passes 1384/1384 assertions: 496 controller-remap, 740
 channel-remap, 41 remap-batching, 31 filter-batching, 23 preset-serialization,
-23 restore-planner, and 30 namespace/import assertions. The numerical difference comes from replacing
-the private user-preset fixture audit with generated data; it is not a weakened
-product assertion. The known primary/auxiliary presets can still be supplied to
-the restore test for an optional compatibility audit, but they are not release
-source or CI inputs.
+23 restore-planner, and 30 namespace/import assertions. Preset tests use
+generated data so no user preset is a release-source or CI input. Known
+primary/auxiliary presets can still be supplied explicitly for an optional
+compatibility audit.
 
 The legacy test seam constructs `Communicator`, which initializes CoreMIDI even
 for offline cases. The tests require a normal macOS user session today, but no

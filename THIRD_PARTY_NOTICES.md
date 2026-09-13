@@ -68,17 +68,10 @@ explicitly non-binding.
 Boost is not vendored. If a future release embeds Boost binary material, its
 license and architecture must be re-audited.
 
-## Historical iOS source
-
-The archived, non-release iOS trees include at least PureLayout (MIT),
-MMDrawerController (MIT), and IOSKnobControl (BSD-style). They are not part of
-the maintained macOS release tree. If those projects are ever republished, their
-complete embedded notices must be preserved and audited separately.
-
 ## Original resources and documentation
 
 Legacy icons, device images, and product names came from the original upstream
 tree. GPL source publication does not itself grant trademark rights. The modern
 binary uses a new trademark-neutral connectivity icon; it does not repurpose an
-iConnectivity or Vaultnaemsae commercial-product logo. The local Revision 26
-protocol PDF is excluded pending separate redistribution permission.
+iConnectivity or Vaultnaemsae commercial-product logo. Protocol documentation
+not present in the maintained source tree is not redistributed by this project.

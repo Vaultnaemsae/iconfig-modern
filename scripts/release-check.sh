@@ -57,7 +57,7 @@ else
   fail ".release-archive is not ignored"
 fi
 
-for doc_path in README.md LICENSE LICENSE.md THIRD_PARTY_NOTICES.md PROVENANCE.md CHANGELOG.md docs/BUILDING.md docs/TESTING.md docs/LICENSING_AUDIT.md docs/RELEASE_AUDIT.md docs/RELEASE.md docs/RELEASE_TOOLCHAIN.md docs/RELEASE_NOTES_0.1.0-beta.1.md docs/WEBSITE_COPY.md docs/SOURCE_TREE.md; do
+for doc_path in README.md LICENSE LICENSE.md THIRD_PARTY_NOTICES.md PROVENANCE.md CHANGELOG.md docs/BUILDING.md docs/TESTING.md; do
   [[ -f "$ROOT_DIR/$doc_path" ]] && pass "$doc_path present" || fail "$doc_path missing"
 done
 
@@ -245,9 +245,9 @@ else
     pass "notarization ticket validates" || fail "notarization ticket does not validate"
 fi
 
-if grep -q 'qt.qt6.6112.clang_64' "$ROOT_DIR/docs/RELEASE_TOOLCHAIN.md" && \
+if grep -q 'qt.qt6.6112.clang_64' "$ROOT_DIR/docs/BUILDING.md" && \
    grep -q '9592f84f7e26d532c5c56824d1da7c9214a766cb0a17beb5af71022bcfbcd271' \
-     "$ROOT_DIR/docs/RELEASE_TOOLCHAIN.md"; then
+     "$ROOT_DIR/docs/BUILDING.md"; then
   pass "pinned official Qt release provenance is documented"
 else
   fail "pinned Qt release provenance is incomplete"

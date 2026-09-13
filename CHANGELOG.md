@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-beta.1 — unreleased
+## 0.1.0-beta.1 — 2026-09-13
 
 Based on iConnectivity iConfig 4.2.7.
 

@@ -14,8 +14,7 @@ CoreMIDI backend.
 - Project version: **0.1.0-beta.1**, based on iConfig 4.2.7
 - Validated architecture: Apple Silicon (`arm64`)
 - Validated device: iConnectAUDIO4+, firmware 2.0.5
-- Release icon: fork-specific, trademark-neutral connectivity symbol
-- Toolchain used for rehabilitation: Qt 6.11.2, Apple clang 21, C++17
+- Maintained toolchain: Qt 6.11.2, Apple clang 21, C++17
 - Preset Restore: **experimental**; one isolated object was restored and rolled
   back successfully, but arbitrary full-device restores have not been validated
 - Firmware flashing: not validated; retired online firmware actions are hidden
@@ -30,6 +29,13 @@ an effective macOS 26 minimum. Public packages use the pinned official Qt
 and no third-party runtime dylibs. The arm64 app targets macOS 14 and the whole
 bundle must pass the minimum-version and relocatable-dependency audits described
 in [BUILDING](docs/BUILDING.md).
+
+## Download
+
+The current signed and notarized beta is available from the
+[GitHub releases page](https://github.com/Vaultnaemsae/iconfig-modern/releases/tag/v0.1.0-beta.1).
+The first beta is Apple Silicon only and targets macOS 14 or later; launch on a
+physical macOS 14 system has not yet been directly validated.
 
 ## Build
 
@@ -64,8 +70,6 @@ for modern macOS and Qt 6. See [PROVENANCE](PROVENANCE.md).
 The original source declares GPLv3. The maintained source is distributed under
 GPLv3; see [LICENSE](LICENSE). Bundled and build-time dependencies have their own
 terms documented in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md).
-The component-by-component evidence and exclusions are recorded in the
-[licensing audit](docs/LICENSING_AUDIT.md).
 
 Names, logos, product images, and trademarks remain the property of their
 respective owners. Their presence in the historical source is not a claim of
@@ -74,8 +78,4 @@ endorsement.
 ## Community maintenance
 
 Vaultnaemsae maintains this compatibility fork as a legacy/community project.
-Support and release language should use the umbrella description:
-
-> Community-maintained tools for legacy music hardware.
-
-Keep iConfig Modern and LF+ in separate repositories and separate releases.
+Issues and contributions are welcome in this repository.

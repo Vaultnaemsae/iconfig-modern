@@ -28,21 +28,19 @@ commits retain their original authors, timestamps, and objects. Maintained-fork
 commits use current, truthful Vaultnaemsae authorship and dates; no upstream
 history has been recreated, squashed, or backdated.
 
-The upstream remote remains named `upstream` and points to the public
-iConnectivity repository. No public fork remote is configured yet.
+The maintained public repository is
+<https://github.com/Vaultnaemsae/iconfig-modern>. Its `upstream` remote points
+to the original iConnectivity repository.
 
-## Local-only material excluded from publication
+## Scope of the maintained branch
 
-- phase backups and generated build products;
-- frozen Qt 5/Qt 6 reference bundles;
-- local IDE metadata;
 - the locally supplied Revision 26 protocol PDF, whose checksum differs from
   the Revision 23 PDF in the GPL upstream snapshot and whose separate
   redistribution permission has not been established;
 - the historical iOS projects, which are outside the maintained desktop scope
   and carry additional third-party notices;
-- obsolete Qt 4 project snapshots and local IDE metadata, which remain
-  recoverable from genuine upstream history.
+- obsolete Qt 4 project snapshots, which remain recoverable from genuine
+  upstream history.
 
 The current protocol document should be linked from iConnectivity's official
 support site rather than copied into a public release without permission.
@@ -54,5 +52,5 @@ compatibility fork. iConnectivity names and device images identify compatible
 hardware; they do not imply current endorsement. The maintained app icon is an
 original, trademark-neutral three-point connectivity symbol and does not use an
 iConnectivity or Vaultnaemsae commercial-product mark. The opaque legacy icon
-remains available in genuine upstream history and in the local release archive;
-it is not used by the maintained application bundle or Qt window surfaces.
+remains available in genuine upstream history; it is not used by the maintained
+application bundle or Qt window surfaces.

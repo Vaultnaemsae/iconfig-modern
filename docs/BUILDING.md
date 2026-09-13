@@ -75,8 +75,22 @@ scripts/verify-minos.sh 'path/to/iConfig Modern.app' 14.0
 
 The Homebrew deployment is not a release candidate: its 21 Qt support dylibs
 were built with macOS 26. The pinned official Qt 6.11.2 `qtbase` distribution
-has been verified at macOS 13.0 and packages without those support dylibs. See
-[RELEASE_TOOLCHAIN](RELEASE_TOOLCHAIN.md) for exact provenance and hashes.
+has been verified at macOS 13.0 and packages without those support dylibs.
+
+## Pinned release Qt provenance
+
+Public arm64 packages use the official Qt online-repository component below,
+not the Homebrew Qt bottle:
+
+- Package ID: `qt.qt6.6112.clang_64`
+- Package version: `6.11.2-0-202608131016`
+- Archive: `6.11.2-0-202608131016qtbase-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z`
+- SHA-256: `9592f84f7e26d532c5c56824d1da7c9214a766cb0a17beb5af71022bcfbcd271`
+- Repository: <https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_6112/qt6_6112/qt.qt6.6112.clang_64/>
+
+The official package is Universal 2. Packaging deterministically thins each
+copied Mach-O to arm64 without changing the installed Qt prefix. Boost is used
+as a header-only build dependency and adds no packaged dylib.
 
 ## Application icon
 
