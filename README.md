@@ -1,5 +1,7 @@
 # iConfig Modern
 
+<img width="256" height="256" alt="iconfig-modern-icon-256" src="https://github.com/user-attachments/assets/0e0d5829-45c2-4e89-85e0-38c4967d1faf" />
+
 iConfig Modern is a community-maintained macOS rebuild of iConnectivity's
 open-source iConfig 4.2.7 application. It exists to keep supported legacy
 iConnectivity hardware usable on current Macs. It is not an official current
