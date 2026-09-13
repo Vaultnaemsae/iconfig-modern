@@ -90,3 +90,5 @@ If it has been useful to you and you'd like to support future development, you c
 ☕ https://buymeacoffee.com/vaultnaemsae
 
 Thank you for your support!
+
+Learn more: https://www.vaultnaemsae.com
